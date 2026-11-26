@@ -11,7 +11,7 @@ flowchart LR
   A["⬇ Download"] --> B["▶ Play a video"] --> C["💬 Subtitles"]
 ```
 
-<p align="center"><img src="assets/readme/modes.en.svg" alt="🎧 Listen: live subtitles · 🗣️ Speak: your voice, translated · 🔁 Two-way: both sides" width="720"></p>
+<p align="center"><img src="assets/readme/modes.en.svg" alt="🎧 Listen: live subtitles · 🗣️ Speak: your voice, translated · 🔁 Two-way: both sides" width="720"><br><img src="assets/demo/mode_listen.gif" alt="🎧 Listen" width="240"> <img src="assets/demo/mode_speak.gif" alt="🗣️ Speak" width="240"> <img src="assets/demo/mode_two_way.gif" alt="🔁 Two-way" width="240"></p>
 
 <p align="center"><img src="assets/readme/facts.en.svg" alt="Languages: zh, en, ja, ko, ru; hi experimental · Windows, Linux, macOS (unverified)" width="720"></p>
 
@@ -30,7 +30,7 @@ flowchart LR
 |---|---|
 | **Windows 10/11** | **[⬇ Download tinglongwu-setup.exe](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe)**, run it, keep clicking **Next** |
 | macOS | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
-| Linux (x86_64) | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
+| Linux (x86_64) | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash`<br><img src="assets/demo/install_15s.gif" alt="Linux install.sh until Done, sped up"> |
 
 SmartScreen warns because the installer is unsigned until #601 lands; Edge hides Keep: hover the download → **…** → **Keep** → open the ▾ next to **Delete** → **Keep anyway**; then click **More info → Run anyway**. Prefer to inspect first? Download `mac_install.sh` / `install.sh` from the [release](https://github.com/sunososobro-hub/tinglongwu/releases/latest), read it, compare it with `SHA256SUMS.txt` on that page, then run it.
 

@@ -3,23 +3,18 @@
 
     python3 scripts/mobile_upload_plan.py EVENT REF REPO HEAD_REPO HAS_PLAY
 
-Upload to the Play internal track: dev pushes, and PR runs whose head is in this same repo.
-Fork PRs never upload and never run on the self-hosted runner. versionCode is the workflow run
-number (monotonic across all branches, so a PR build is never lower than an earlier dev build).
+Upload to the Play internal track only on a push to dev (#1969). PR runs (same-repo or fork) build
+but never upload: the owner tests after merge, a per-PR upload cost 10+ minutes, and a rerun of an
+old PR run was rejected by Play (versionCode = workflow run number, #1934). A fallback run keeps the
+original event, so it follows the same rule. Fork PRs never run on the self-hosted runner.
 """
 import sys
-
-
-def same_repo_pr(event, repo, head_repo):
-    return event == "pull_request" and bool(head_repo) and head_repo == repo
 
 
 def should_upload(event, ref, repo, head_repo, has_play):
     if not has_play:
         return False
-    if event == "push":
-        return ref == "refs/heads/dev"
-    return same_repo_pr(event, repo, head_repo)
+    return event == "push" and ref == "refs/heads/dev"
 
 
 def main(argv):

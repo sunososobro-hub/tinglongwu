@@ -1,0 +1,125 @@
+name: mic-room
+# #894 cloud verify (owner 2026-11-23): live room audio through the microphone path on a GitHub-hosted ubuntu runner.
+# A PulseAudio null sink (tlwu-Room) stands in for the room, a source remapped from its monitor (tlwu-Mic) for the
+# microphone. The 5-minute multi-speaker clip (FLEURS test, CC-BY 4.0, every WAV checked against its sha256 in
+# eval/matrix_pins.json by make_ci_smoke.py) is played into tlwu-Room while `verify_offline.py --mic` runs
+# `tlwu --mic --capture-device tlwu-Mic` (scripts/hw_live_checks.py mic, the same check the owner-PC hw-tests job runs
+# through VB-CABLE). PASS when WER(mic) <= 1.25 x WER(same clip as --file), >= 1 mic line and verify_offline PASS
+# (no network connection). The longest subtitle gap is report only (rules section 20, #1247): it is printed with the
+# median / max of the last 10 runs of this workflow (actions/cache history) until a 10-run baseline exists.
+# Not a merge gate (rules section 17).
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - .github/workflows/mic-room.yml
+      - scripts/hw_live_checks.py
+      - scripts/verify_offline.py
+      - src/*/tinglongwu/capture/mic.py
+      - src/*/tinglongwu/capture/_soundcard.py
+      - tests/test_mic_room_894.py
+  schedule:
+    - cron: "41 19 * * *"  # 03:41 Asia/Taipei: one run a day builds the 10-run gap baseline
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mic-room-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TLWU_NO_UPDATE: "1"
+  PYTHONUTF8: "1"
+  WHISPER: small  # the default CPU model; the --file and --mic halves use the same one
+
+jobs:
+  mic-room:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: System libraries (PulseAudio server + pactl)
+        timeout-minutes: 8
+        run: |
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
+          for i in 1 2 3; do
+            sudo apt-get $APT update && sudo apt-get $APT install -y --no-install-recommends libsndfile1 libpulse0 pulseaudio pulseaudio-utils && exit 0
+            sleep 15
+          done
+          exit 1
+      - name: Install tlwu
+        run: pip install -e ".[dev]" "pytest-timeout==2.3.1"
+      - name: Paths
+        run: echo "TLWU_MODELS=$HOME/tlwu-models" >> "$GITHUB_ENV"
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/tlwu-models
+            eval_data/live-fleurs
+          key: mic-room-v1-${{ env.WHISPER }}-${{ hashFiles('src/system/tinglongwu_setup/manifest.json', 'src/system/tinglongwu_setup/downloader.py', 'eval/matrix_pins.json', 'scripts/bench/make_ci_smoke.py') }}
+      - name: Model (Whisper ${{ env.WHISPER }})
+        run: tlwu-setup --whisper "$WHISPER" --models-dir "$TLWU_MODELS"
+      - name: Live-test clips (pinned FLEURS, sha256 checked)
+        run: |
+          [ -f eval_data/live-fleurs/manifest.jsonl ] || python scripts/bench/make_ci_smoke.py --pins eval/matrix_pins.json --out eval_data/live-fleurs
+          python scripts/hw_live_checks.py clips --data eval_data/live-fleurs --out "$RUNNER_TEMP/live"
+      - name: PulseAudio room (null sink tlwu-Room) and microphone (tlwu-Mic, remapped from the sink's monitor)
+        run: |
+          pulseaudio -D --exit-idle-time=-1
+          for i in $(seq 20); do pactl info >/dev/null 2>&1 && break; sleep 0.5; done
+          pactl load-module module-null-sink sink_name=tlwu_room sink_properties=device.description=tlwu-Room
+          pactl load-module module-remap-source master=tlwu_room.monitor source_name=tlwu_mic source_properties=device.description=tlwu-Mic
+          pactl set-default-sink tlwu_room
+          pactl set-default-source tlwu_mic
+          pactl list short sinks
+          pactl list short sources
+      - name: Device plumbing (a tone played into tlwu-Room reaches tlwu's MicSource on tlwu-Mic)
+        env:
+          TLWU_REQUIRE_PULSE: "1"
+        run: python -m pytest -q --timeout=120 tests/test_mic_room_894.py
+      - name: Gap history (report only, last runs of this workflow)
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: gap-history
+          key: mic-room-gap-${{ github.run_id }}
+          restore-keys: mic-room-gap-
+      - name: "#894 5-min multi-speaker clip into tlwu-Room, tlwu --mic on tlwu-Mic: WER <= 1.25x file (gap: report only)"
+        timeout-minutes: 30
+        run: |
+          mkdir -p gap-history
+          rc=0
+          python scripts/hw_live_checks.py mic --clips "$RUNNER_TEMP/live" --models-dir "$TLWU_MODELS" \
+            --play-device tlwu-Room --capture-device tlwu-Mic \
+            --gap-history gap-history/gap_894_cloud.jsonl > "$RUNNER_TEMP/check_894.txt" || rc=$?
+          cat "$RUNNER_TEMP/check_894.txt"
+          { echo "### $(grep -E '^(PASS|FAIL)' "$RUNNER_TEMP/check_894.txt")";
+            { grep -E '^report: ' "$RUNNER_TEMP/check_894.txt" || true; } | sed 's/^report: /- /'; } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+      - uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        if: ${{ !cancelled() && hashFiles('gap-history/gap_894_cloud.jsonl') != '' }}
+        continue-on-error: true
+        with:
+          path: gap-history
+          key: mic-room-gap-${{ github.run_id }}
+      # Text only: transcripts of public FLEURS speech, the live log and mic_report.json, so a FAIL can be read here.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        with:
+          name: mic-room
+          path: |
+            ${{ runner.temp }}/live/mic_file.jsonl
+            ${{ runner.temp }}/live/mic_live.jsonl
+            ${{ runner.temp }}/live/mic_live.log
+            ${{ runner.temp }}/live/mic_report.json
+            ${{ runner.temp }}/check_894.txt
+          retention-days: 7
+          if-no-files-found: ignore

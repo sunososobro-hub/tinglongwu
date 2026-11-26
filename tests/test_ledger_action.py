@@ -37,7 +37,7 @@ def test_mix_parse_valid_and_invalid():
 
 
 def test_usage_minutes_last_line():
-    assert ledger.usage_minutes("x\ntlwu-usage: model=sonnet tool_calls=3 minutes=12") == 12
+    assert ledger.usage_minutes("x\ntlwu-usage: model=sonnet tool_calls=12 minutes=12") == 12
     assert ledger.usage_minutes("no usage") is None
 
 
@@ -71,7 +71,7 @@ def test_linked_issue_prefers_head_branch():
 
 def test_final_usage_only_last_line():
     assert ledger.final_usage("tlwu-usage: model=x minutes=99\nsome prose") is None
-    assert ledger.final_usage("Closes #1\n\ntlwu-usage: model=sonnet tool_calls=3 minutes=12\n") == 12
+    assert ledger.final_usage("Closes #1\n\ntlwu-usage: model=sonnet tool_calls=12 minutes=12\n") == 12
 
 
 def test_collect_counts_only_producer_comments_and_7d_infra_denominator(monkeypatch):
@@ -79,7 +79,7 @@ def test_collect_counts_only_producer_comments_and_7d_infra_denominator(monkeypa
     now = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
     iso = lambda d: (now - d).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E731
     pr = {"merged_at": iso(timedelta(days=3)), "head": {"ref": "fix/9"},
-          "body": "Closes #9\ntlwu-usage: model=sonnet tool_calls=1 minutes=20"}
+          "body": "Closes #9\ntlwu-usage: model=sonnet tool_calls=20 minutes=20"}
     comments = [{"user": {"login": ledger.PRODUCER}, "created_at": iso(timedelta(days=3)), "body": "tlwu-usage: kind=qa minutes=30"},
                 {"user": {"login": "outsider"}, "created_at": iso(timedelta(hours=1)), "body": "tlwu-usage: minutes=500"},
                 {"user": {"login": ledger.PRODUCER}, "created_at": iso(timedelta(hours=1)), "body": "tlwu-usage: kind=qa minutes=10"}]
@@ -102,7 +102,7 @@ def test_deleted_linked_issue_keeps_minutes_in_total(monkeypatch):
     from datetime import datetime, timedelta, UTC
     now = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
     pr = {"merged_at": (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"), "head": {"ref": "fix/9"},
-          "body": "Closes #9\ntlwu-usage: model=sonnet tool_calls=1 minutes=20"}
+          "body": "Closes #9\ntlwu-usage: model=sonnet tool_calls=20 minutes=20"}
     monkeypatch.setattr(ledger, "_gh_list", lambda path: [pr] if "/pulls" in path else [])
 
     def gone(path, *a):
@@ -141,7 +141,7 @@ def test_collect_fix_counts_producer_fix_comments_on_prs(monkeypatch):  # #1581
     by_type, untyped, infra_min, total7, fix48 = ledger.collect_fix(now, pr_issue=lambda n: 9)
     assert by_type == {"infra": 15} and untyped == 0 and fix48 == 15  # infra wins over the type label
     assert total7 == 20 and infra_min == 20
-    assert ledger.fix_line(15, 60) == "open->merge fix minutes (48 h): 15 (25.0% of total)"
+    assert ledger.fix_line(15, 60) == "open->merge fix calls (48 h): 15 (25.0% of total)"
 
 
 def test_pick_type_infra_wins_over_type_label():
@@ -154,7 +154,7 @@ def test_collect_infra_issue_lands_in_infra_row(monkeypatch):
     from datetime import datetime, timedelta, UTC
     now = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
     pr = {"merged_at": (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"), "head": {"ref": "fix/9"},
-          "body": "Closes #9\ntlwu-usage: model=sonnet tool_calls=1 minutes=20"}
+          "body": "Closes #9\ntlwu-usage: model=sonnet tool_calls=20 minutes=20"}
     monkeypatch.setattr(ledger, "_gh_list", lambda path: [pr] if "/pulls" in path else [])
     monkeypatch.setattr(ledger, "_gh", lambda path, *a: {"labels": [{"name": "bug"}, {"name": "infra"}]})
     by_type, untyped, infra_min, total7 = ledger.collect(now)
@@ -178,4 +178,4 @@ def test_src_owner_exempt_from_mix_and_infra_cap(monkeypatch):  # owner 2026-11-
     rows = {r["type"]: r for r in ledger.build_rows(by_type, ledger.DEFAULT_MIX)}
     assert rows["bug"]["share"] == 100.0 and ledger.OWNER_KEY not in rows
     assert sum(r["minutes"] for r in rows.values()) == 10
-    assert ledger.owner_line(50) == "owner-requested (src:owner, exempt from mix): 50 min (48 h)"
+    assert ledger.owner_line(50) == "owner-requested (src:owner, exempt from mix): 50 calls (48 h)"

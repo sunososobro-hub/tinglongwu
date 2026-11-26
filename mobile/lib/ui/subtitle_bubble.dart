@@ -4,6 +4,7 @@ import '../logic/conversation.dart';
 import '../logic/phone_audio.dart';
 import '../logic/speakers.dart';
 import '../services/pipeline.dart';
+import 'a11y.dart';
 import 'subtitle_screen.dart';
 
 const _radius = BorderRadius.only(
@@ -60,7 +61,8 @@ class SubtitleBubble extends StatelessWidget {
     );
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Align(alignment: me ? Alignment.centerRight : Alignment.centerLeft, child: box),
+      child: Align(alignment: me ? Alignment.centerRight : Alignment.centerLeft,
+          child: dashed ? box : LiveRegion(child: box)),
     );
   }
 }

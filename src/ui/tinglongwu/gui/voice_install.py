@@ -24,6 +24,13 @@ RU_TEXT = {
           "потом работает офлайн.",
     "zh-TW": "要用俄語把你說的話念出來，需要俄語朗讀語音（約 {mb} MB）。現在安裝嗎？只需連網一次，之後可離線使用。",
 }
+PLAIN_TEXT = {  # #1808: plain wording (default); TEXT is the technical view (names the Kokoro voice)
+    "en": "Speaking into the meeting needs the read-aloud voice (about {mb} MB). Install it now? Needs internet once, "
+          "works offline afterwards.",
+    "ru": "Для голоса во встречу нужен голос озвучки (около {mb} МБ). Установить сейчас? Интернет нужен один раз, "
+          "потом работает офлайн.",
+    "zh-TW": "把你說的話念進會議需要朗讀語音（約 {mb} MB）。現在安裝嗎？只需連網一次，之後可離線使用。",
+}
 TITLE = {"en": "Install voice", "ru": "Установка голоса", "zh-TW": "安裝朗讀語音"}
 
 
@@ -73,7 +80,9 @@ def pack_name(run: dict) -> str:
 
 
 def dialog_text(ui_lang: str, ru: bool = False) -> str:
-    table = RU_TEXT if ru else TEXT
+    from .core import tech_labels
+
+    table = RU_TEXT if ru else (TEXT if tech_labels() else PLAIN_TEXT)
     return table.get(ui_lang, table["en"]).format(mb=RU_MB if ru else VOICE_MB)
 
 

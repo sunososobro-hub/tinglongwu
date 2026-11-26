@@ -4,10 +4,14 @@ The fixed-rule part of R-merge / S-merge: for every open PR into `dev` it decide
 
   merge       all rule gates pass, no protected / g4 path (or an Opus PASS newer than the head, a PASS on an older
               head with no protected change since (#1580), or an exempt patch
-              bump) and no unresolved review thread: squash-merge with the checked head SHA;
+              bump) and no unresolved review thread: squash-merge with the checked head SHA; #1885: when the only
+              unresolved threads are review-bot Minor / Trivial / Nitpick findings, it replies one line to each,
+              resolves it, logs it on the rolling `[review] minor findings` issue, then merges (rules section 3
+              "One review round" run by a script);
   needs-opus  a protected / g4 path (section 14) or a head that is not fix/N (section 2) without an Opus PASS:
               add the `needs-opus` label for the Opus review queue;
-  needs-ai    a judgement step is left (unresolved review-bot or human thread, a dirty branch, a paperwork gap in the
+  needs-ai    a judgement step is left (a human thread, a review-bot Critical / Major (or unrated) thread, a dirty
+              branch, a paperwork gap in the
               body, a hotfix back-merge): add `needs-review-ai` so the AI mergers take it;
   wait        `test` not finished, mergeability unknown: do nothing, the next event re-runs the gate;
   hold        a hard stop (section 3 / 14) or a FAIL / CHANGES not yet answered by a newer commit: do nothing.
@@ -36,12 +40,21 @@ EVAL_CHECK = "mini-eval"  # #1687: eval.yml job (check run) name; needed only wh
 EVAL_PATH_RE = re.compile(r"^(?:src/[^/]+/tinglongwu/|eval/|src/system/tinglongwu_setup/manifest\.json$"
                           r"|scripts/bench/make_ci_smoke\.py$|\.github/workflows/eval[^/]*\.yml$)")
 
-RELEASE_CRITICAL = ("ci.yml", "e2e.yml", "windows-build.yml", "hw-tests.yml", "release.yml", "release-pr.yml",
-                    "hotfix.yml")
-PROTECTED_EXACT = {".agent/tlwu_rules.md", "scripts/release_notes.py", "scripts/release_check.py",
-                   "src/core/tinglongwu/__init__.py", "pyproject.toml", "src/system/tinglongwu/offline.py", "scripts/download_models.py",
-                   "scripts/make_model_pins.py", "scripts/merge_gate.py", ".github/workflows/merge-gate.yml"}
-PROTECTED_PREFIX = (".claude/", "release/packaging/", "release/installer/")
+# #1918: protected / g4 paths (section 14) live in the per-folder OWNERS files, read by scripts/owners.py from
+# this checkout (dev), never from the PR. Loaded on first use (#1954): pr-format.yml runs from main
+# (pull_request_target) with a sparse checkout of dev that may lack owners.py; it only needs the regexes here.
+# A missing owners.py still fails closed: is_protected() raises.
+_owners = None
+
+
+def _load_owners():
+    global _owners
+    if _owners is None:
+        spec = importlib.util.spec_from_file_location("tlwu_owners", Path(__file__).with_name("owners.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _owners = mod
+    return _owners
 
 HEAD_RE = re.compile(r"^(?:fix/(\d+)(?:-r\d+)?|feat/(\d+))$")
 LINK_RE = re.compile(r"\b(?:Closes|Refs)\s+#(\d+)\b", re.I)
@@ -55,22 +68,18 @@ TRUSTED_ISSUE_BOTS = frozenset({"github-actions[bot]"})
 PASS_RE = re.compile(r"^\s*Opus review: (?:PASS|APPROVE)\b", re.M)
 REJECT_RE = re.compile(r"(?:AI review: FAIL|Opus review: CHANGES)")
 STOP_RE = re.compile(r"(?<!non-)(?<!not )\b(?:needs owner|blocking)\b", re.I)
+# #1885: review-bot severity markers. CodeRabbit writes `<img ...></picture> Minor** · ...` (older: `_🟡 Minor_`).
+# Only these count as minor; Critical / Major or a thread with no marker goes to an AI merger (fail closed).
+SEVERITY_RE = re.compile(r"(?:</picture>\s*|_\S{1,3}\s+)(Critical|Major|Minor|Trivial|Nitpick|Info)(?![A-Za-z])")
+MINOR_SEVERITIES = frozenset({"Minor", "Trivial", "Nitpick", "Info"})
+MINOR_LOG_TITLE = "[review] minor findings"
 BOT_BLOCK_RE = re.compile(r"<!-- This is an auto-generated comment.*?<!-- end of auto-generated comment[^>]*-->",
                           re.S)
 
 
 def is_protected(path: str) -> bool:
-    """Section 14 protected paths plus the g4 sensitive paths; files under tests/ never count (section 3)."""
-    if path.startswith("tests/"):
-        return False
-    if path in PROTECTED_EXACT or path.startswith(PROTECTED_PREFIX):
-        return True
-    if re.fullmatch(r"requirements/[^/]*\.txt", path) or re.fullmatch(r"scripts/[^/]*offline[^/]*", path):
-        return True
-    if path.startswith(".github/workflows/"):
-        name = path.rsplit("/", 1)[-1]
-        return name in RELEASE_CRITICAL or name.startswith("auto-release")
-    return False
+    """Section 14 protected paths plus the g4 sensitive paths, per the OWNERS chain (#1918); tests/ never count."""
+    return _load_owners().is_protected(path)
 
 
 def trusted_issue(issue: dict) -> bool:
@@ -148,8 +157,16 @@ def carried_pass(notes: list[dict], carry) -> datetime | None:
     return max(times) if times else None
 
 
+def minor_bot_thread(t: dict) -> bool:
+    """#1885: an unresolved thread a review bot opened with a Minor / Trivial / Nitpick / Info marker."""
+    if not (t.get("author") or "").endswith("[bot]") or t.get("human_reply"):
+        return False  # a person's thread, or a person answered in it (e.g. "blocking"): an AI merger decides
+    m = SEVERITY_RE.search(t.get("body") or "")
+    return bool(m) and m.group(1) in MINOR_SEVERITIES
+
+
 def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None, notes: list[dict],
-             unresolved_threads: int, head_at: datetime, bump=None, legacy_freeze: bool = False,
+             unresolved_threads, head_at: datetime, bump=None, legacy_freeze: bool = False,
              carry=None) -> tuple[str, str]:
     """Pure decision for one PR. Returns (action, reason).
 
@@ -157,7 +174,9 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
     checks: check runs on the head commit. issue: GET issues/<linked> or None. notes: PR comments and reviews as
     {author, body, at}. head_at: committer date of the head commit. bump: callable(files) -> (exempt, reason),
     release_notes.bump_exempt. legacy_freeze: a legacy dev -> main release PR is open (section 14 Transition).
-    carry: callable(sha) -> bool for #1580 (see carried_pass); None = only a PASS bound to the head counts."""
+    carry: callable(sha) -> bool for #1580 (see carried_pass); None = only a PASS bound to the head counts.
+    unresolved_threads: a count (every thread needs an AI merger) or, #1885, a list of thread dicts
+    {id, author, body, path, url, comment_id}: review-bot Minor threads alone do not stop a merge."""
     head = pr["head"]["ref"]
     body = pr.get("body") or ""
     if pr.get("state", "open") != "open":
@@ -243,16 +262,33 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
         return "needs-ai", "merge conflict: resolve in place (section 7)"
     if state not in ("clean", "unstable", "has_hooks"):
         return "wait", f"mergeable_state is {state}"
+    if isinstance(unresolved_threads, int):
+        if unresolved_threads:
+            return "needs-ai", f"{unresolved_threads} unresolved review thread(s)"
+        return "merge", "all rule gates pass"
+    blocking = [t for t in unresolved_threads if not minor_bot_thread(t)]
+    if blocking:
+        return "needs-ai", f"{len(blocking)} unresolved review thread(s) (human, Critical / Major or unrated)"
     if unresolved_threads:
-        return "needs-ai", f"{unresolved_threads} unresolved review thread(s)"
+        return "merge", f"all rule gates pass; {len(unresolved_threads)} Minor review-bot thread(s) to resolve and log"
     return "merge", "all rule gates pass"
 
 
 # ---------------------------------------------------------------- I/O (gh only)
 
+class GhError(subprocess.CalledProcessError):
+    """#1947: a failed gh call; str() carries gh's own stderr (still a CalledProcessError for existing handlers)."""
+
+    def __str__(self) -> str:
+        err = (self.stderr or "").strip()
+        return f"Command [gh api {self.cmd[2] if len(self.cmd) > 2 else ''} ...] returned {self.returncode}: {err}"
+
+
 def _gh(path: str, *args: str):
-    out = subprocess.run(["gh", "api", path, *args], check=True, capture_output=True, text=True).stdout
-    return json.loads(out) if out.strip() else None
+    r = subprocess.run(["gh", "api", path, *args], capture_output=True, text=True)
+    if r.returncode:
+        raise GhError(r.returncode, r.args, r.stdout, r.stderr)
+    return json.loads(r.stdout) if r.stdout.strip() else None
 
 
 def _gh_list(path: str) -> list:
@@ -267,20 +303,47 @@ def _release_notes():
     return mod
 
 
-def _unresolved(num: int) -> int:
+def _login(author: dict | None) -> str:
+    """GraphQL gives a bot's login without `[bot]` (`coderabbitai`, __typename Bot); REST adds it. Normalize."""
+    a = author or {}
+    login = a.get("login") or ""
+    return f"{login}[bot]" if a.get("__typename") == "Bot" and not login.endswith("[bot]") else login
+
+
+def thread_info(t: dict) -> dict:
+    """One GraphQL review thread -> {id, path, author, body, url, comment_id, human_reply} (#1885)."""
+    comments = (t.get("comments") or {}).get("nodes") or [{}]
+    first = comments[0] or {}
+    human_reply = len(comments) >= 50 or any(not _login(c.get("author")).endswith("[bot]") for c in comments[1:])
+    return {"id": t["id"], "path": t.get("path"), "author": _login(first.get("author")), "body": first.get("body") or "",
+            "url": first.get("url"), "comment_id": first.get("databaseId"), "human_reply": human_reply}
+
+
+def _unresolved(num: int) -> list[dict]:
+    """Unresolved, not outdated review threads, each with its first comment (#1885: severity and author)."""
     owner, name = REPO.split("/")
     q = ("query($o:String!,$n:String!,$p:Int!,$c:String){repository(owner:$o,name:$n){pullRequest(number:$p)"
-         "{reviewThreads(first:100,after:$c){nodes{isResolved isOutdated} pageInfo{hasNextPage endCursor}}}}}")
-    count, cursor = 0, None
+         "{reviewThreads(first:100,after:$c){nodes{id isResolved isOutdated path "
+         "comments(first:50){nodes{databaseId body url author{login __typename}}}} pageInfo{hasNextPage endCursor}}}}}")
+    out, cursor = [], None
     while True:
         args = ["-f", f"query={q}", "-f", f"o={owner}", "-f", f"n={name}", "-F", f"p={num}"]
         if cursor:
             args += ["-f", f"c={cursor}"]
         conn = _gh("graphql", *args)["data"]["repository"]["pullRequest"]["reviewThreads"]
-        count += sum(1 for t in conn["nodes"] if not t["isResolved"] and not t["isOutdated"])
+        for t in conn["nodes"]:
+            if t["isResolved"] or t["isOutdated"]:
+                continue
+            out.append(thread_info(t))
         if not conn["pageInfo"]["hasNextPage"]:
-            return count
+            return out
         cursor = conn["pageInfo"]["endCursor"]
+
+
+def inline_notes(num: int) -> list[dict]:
+    """Inline review comments (thread replies included, resolved or not) as notes for the section 3 hold check."""
+    return [{"author": c["user"]["login"], "body": c.get("body"), "at": c["created_at"]}
+            for c in _gh_list(f"repos/{REPO}/pulls/{num}/comments?per_page=100")]
 
 
 def gather(num: int, rn) -> tuple:
@@ -298,6 +361,7 @@ def gather(num: int, rn) -> tuple:
              for c in _gh_list(f"repos/{REPO}/issues/{num}/comments?per_page=100")]
     notes += [{"author": r["user"]["login"], "body": r.get("body"), "at": r["submitted_at"], "commit_id": r.get("commit_id")}
               for r in _gh_list(f"repos/{REPO}/pulls/{num}/reviews?per_page=100") if r.get("submitted_at")]
+    notes += inline_notes(num)  # #1885: a "blocking" reply inside a review thread is a hard stop too
     n = linked_issue(pr.get("body"))
     m = HEAD_RE.match(pr["head"]["ref"])
     n = n or (int(m.group(1) or m.group(2)) if m else None)
@@ -349,7 +413,68 @@ def legacy_freeze() -> bool:
                and p["title"].startswith("release:") for p in pulls)
 
 
-def apply(num: int, pr: dict, action: str, reason: str, notes: list[dict] = ()) -> None:
+def _finding_line(t: dict) -> str:
+    """One line for the rolling log: severity, file and the finding's bold title (or first text line)."""
+    body = BOT_BLOCK_RE.sub("", t.get("body") or "")
+    m = SEVERITY_RE.search(body)
+    sev = m.group(1) if m else "?"
+    titles = re.findall(r"^\*\*([^*<][^*]{2,160})\*\*\s*$", body, re.M)
+    text = titles[0] if titles else next((ln.strip() for ln in body.splitlines()
+                                          if ln.strip() and not ln.lstrip().startswith(("<", "**<"))), "")
+    return f"- {sev} `{t.get('path') or '?'}`: {text[:160]} ({t.get('url') or 'no link'})"
+
+
+def minor_log_issue() -> int:
+    """#1885: the open rolling `[review] minor findings` issue; created on first use."""
+    found = _gh("search/issues", "-X", "GET", "-f",
+                f'q=repo:{REPO} is:issue is:open in:title "{MINOR_LOG_TITLE}"', "-f", "per_page=20")
+    for it in (found or {}).get("items", []):
+        if it.get("title") == MINOR_LOG_TITLE and not it.get("pull_request"):
+            return it["number"]
+    body = ("Why: rules section 3 \"One review round\": Minor review-bot findings do not block a merge (#1885).\n"
+            "Goal: one place where merge-gate logs every Minor / Trivial / Nitpick review-bot finding it resolved.\n"
+            "Acceptance: each merged PR with such findings has one comment here listing them with links.\n"
+            "Verify: read the comments; open a [bug] issue for any finding that is a real user-visible bug.")
+    made = _gh(f"repos/{REPO}/issues", "-X", "POST", "-f", f"title={MINOR_LOG_TITLE}", "-f", f"body={body}",
+               "-f", "labels[]=area:ci", "-f", "labels[]=P3", "-f", "labels[]=mode:shared", "-f", "labels[]=infra",
+               "-f", "labels[]=status:proposal")
+    return made["number"]
+
+
+def resolve_minor(num: int, threads: list[dict]) -> None:
+    """#1885: log the Minor review-bot threads, reply one line to each and resolve it (before the merge)."""
+    minor = [t for t in threads if minor_bot_thread(t)]
+    if not minor:
+        return
+    log = None
+    try:  # #1947: a failed log never blocks the merge
+        log = minor_log_issue()
+        lines = "\n".join(_finding_line(t) for t in minor)
+        _gh(f"repos/{REPO}/issues/{log}/comments", "-X", "POST", "-f",
+            f"body=#{num}: {len(minor)} Minor review-bot finding(s), resolved by merge-gate, not fixed in the PR.\n{lines}")
+    except (subprocess.CalledProcessError, RuntimeError, KeyError) as e:
+        print(f"#{num} warn: minor log failed: {getattr(e, 'stderr', None) or e}", file=sys.stderr)
+    where = f"logged on #{log}." if log else "log failed."
+    for t in minor:
+        if t.get("comment_id"):
+            _gh(f"repos/{REPO}/pulls/{num}/comments/{t['comment_id']}/replies", "-X", "POST", "-f",
+                f"body=merge-gate: Minor finding, not fixed in this PR (rules section 3 one review round); {where}")
+        _gh("graphql", "-f", "query=mutation($t:ID!){resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}",
+            "-f", f"t={t['id']}")
+
+
+WORKFLOW_HOLD = "changes .github/workflows; merge-gate token lacks workflow scope, an agent merges it"
+
+
+def hold_workflow_scope(num: int, notes=()) -> None:
+    """#1948: a 403 'without workflow scope' is a hold, not an error; the reason is posted once."""
+    print(f"#{num} hold: {WORKFLOW_HOLD}")
+    marker = "merge-gate: hold:"
+    if not any((n.get("body") or "").startswith(marker) for n in notes):
+        _gh(f"repos/{REPO}/issues/{num}/comments", "-X", "POST", "-f", f"body={marker} {WORKFLOW_HOLD}")
+
+
+def apply(num: int, pr: dict, action: str, reason: str, notes: list[dict] = (), threads=()) -> None:
     labels = {lb["name"] for lb in pr.get("labels", [])}
     if action == "merge":
         now = _gh(f"repos/{REPO}/pulls/{num}")  # last look right before the write: the merge API cannot bind the base
@@ -357,8 +482,16 @@ def apply(num: int, pr: dict, action: str, reason: str, notes: list[dict] = ()) 
             raise RuntimeError("base, head or body changed before merge; not merged")
         if "release-fix" not in (pr.get("body") or "") and legacy_freeze():
             raise RuntimeError("legacy release freeze started; not merged")
-        subprocess.run(["gh", "api", "-X", "PUT", f"repos/{REPO}/pulls/{num}/merge", "-f", "merge_method=squash",
-                        "-f", f"sha={pr['head']['sha']}"], check=True)
+        if not isinstance(threads, int):
+            resolve_minor(num, list(threads))
+        r = subprocess.run(["gh", "api", "-X", "PUT", f"repos/{REPO}/pulls/{num}/merge", "-f", "merge_method=squash",
+                            "-f", f"sha={pr['head']['sha']}"], capture_output=True, text=True)
+        if r.returncode:
+            err = (r.stderr or "") + (r.stdout or "")
+            if "403" in err and "workflow" in err and "scope" in err:  # #1948: the token cannot write workflow files
+                hold_workflow_scope(num, notes)
+                return
+            raise GhError(r.returncode, r.args, r.stdout, r.stderr)
     elif action in ("needs-opus", "needs-ai"):
         label = NEEDS_OPUS if action == "needs-opus" else NEEDS_AI
         marker = f"merge-gate: {label}:"
@@ -385,7 +518,7 @@ def main(argv=None) -> int:
             action, reason = evaluate(pr, files, checks, issue, notes, threads, head_at, bump, freeze, carry)
             print(f"#{num} {action}: {reason}")
             if a.apply:
-                apply(num, pr, action, reason, notes)
+                apply(num, pr, action, reason, notes, threads)
         except Exception as e:  # one bad PR never stops the rest
             print(f"#{num} error: {e}", file=sys.stderr)
             rc = 1

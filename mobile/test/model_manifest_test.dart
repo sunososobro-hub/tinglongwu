@@ -293,7 +293,48 @@ void main() {
     expect(m.zipTargetsFor(ru.name)['voice.bin'], 'tts-ru/voice.bin');
     expect(m.packs.singleWhere((p) => p.id == 'voice-en').kind, 'vits');
     // One voice per language, the Russian one next to the Russian recognizer (different folders).
-    expect({for (final p in m.packs) p.folder}, {'tts-en', 'tts-ru', 'asr-ru'});
+    expect({for (final p in m.packs) p.folder}, {'tts-en', 'tts-ru', 'tts-zh', 'asr-ru'});
+  });
+
+  test('shipped Chinese voice pack (#1951): melo layout, optional, not in the base download', () {
+    final models = ModelManifest.parse(File('assets/models_manifest.json').readAsStringSync(),
+        packsJson: File('assets/voice_packs.json').readAsStringSync());
+    final zh = models.packs.singleWhere((p) => p.id == 'voice-zh');
+    expect(zh.kind, 'melo');
+    expect(zh.lang, 'zh');
+    expect(zh.name, 'tlwu-voice-zh.zip');
+    expect(zh.url, contains('/releases/download/mobile-latest/'));
+    expect(zh.folder, 'tts-zh');
+    // Exactly the files the TTS worker reads: VITS model + rule FSTs + the jieba dictionary.
+    expect(zh.files.map((f) => f.path).toSet(), TtsVoiceLayout.rel('zh', engine: 'melo').toSet());
+    expect(TtsVoiceLayout.files('melo'), containsAll(['model.onnx', 'tokens.txt', 'lexicon.txt', 'number.fst']));
+    expect(TtsVoiceLayout.files('melo'), contains('dict/jieba.dict.utf8'));
+    // A picked zip is read as this pack; entries land in tts-zh/ (dictionary in tts-zh/dict/).
+    expect(models.packForZip('tlwu-voice-zh.zip'), same(zh));
+    expect(models.packForZip('vits-melo-tts-zh_en.zip'), same(zh));
+    final t = models.zipTargetsFor(zh.name);
+    expect(t['model.onnx'], 'tts-zh/model.onnx');
+    expect(t['jieba.dict.utf8'], 'tts-zh/dict/jieba.dict.utf8');
+    // Optional: none of its files is a required model, so the base download size is unchanged.
+    expect(models.files.any((f) => f.path.startsWith('tts-zh/')), isFalse);
+    expect(models.installedPacks({...TtsVoiceLayout.rel('zh', engine: 'melo')}), {'voice-zh'});
+    expect(models.installedPacks({...TtsVoiceLayout.rel('zh')}), isEmpty); // 3 VITS files are not the zh pack
+  });
+
+  test('a melo voice folder is probed before plain VITS, and a partial one is no voice', () {
+    final all = TtsVoiceLayout.rel('zh', engine: 'melo').toSet();
+    final v = TtsVoicePaths.find('zh', resolve: (r) => '/m/$r', exists: (p) => all.contains(p.substring(3)));
+    expect(v!.engine, 'melo');
+    expect(v.files['dict/jieba.dict.utf8'], '/m/tts-zh/dict/jieba.dict.utf8');
+    // Only the three VITS files: that is a plain VITS voice, not melo.
+    final vitsOnly = TtsVoiceLayout.rel('zh').toSet();
+    expect(TtsVoicePaths.find('zh', resolve: (r) => '/m/$r', exists: (p) => vitsOnly.contains(p.substring(3)))!.engine, 'vits');
+    // One melo file missing -> a half-installed melo voice, not plain VITS (#1967).
+    final partial = {...all}..remove('tts-zh/phone.fst');
+    expect(TtsVoicePaths.find('zh', resolve: (r) => '/m/$r', exists: (p) => partial.contains(p.substring(3))), isNull);
+    // VITS files plus only a jieba dict file: also a partial melo voice.
+    final dictOnly = {...vitsOnly, 'tts-zh/dict/jieba.dict.utf8'};
+    expect(TtsVoicePaths.find('zh', resolve: (r) => '/m/$r', exists: (p) => dictOnly.contains(p.substring(3))), isNull);
   });
 
   test('shipped assets/voice_packs.json has the Russian recognizer pack', () {

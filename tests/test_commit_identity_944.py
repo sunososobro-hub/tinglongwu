@@ -82,8 +82,10 @@ def test_incomplete_or_capped_commit_list_fails(tmp_path, listed, expected, code
 
 def _identity_step():
     yaml = pytest.importorskip("yaml")
-    steps = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text("utf-8"))["jobs"]["test"]["steps"]
-    return next(s for s in steps if str(s.get("name", "")).startswith("Commit identity"))
+    jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text("utf-8"))["jobs"]
+    # #1857 part 3: the step lives in the `checks` job, which the required `test` job needs
+    assert "checks" in jobs["test"]["needs"]
+    return next(s for s in jobs["checks"]["steps"] if str(s.get("name", "")).startswith("Commit identity"))
 
 
 def test_step_runs_only_for_prs_into_dev_and_passes_the_commit_count():

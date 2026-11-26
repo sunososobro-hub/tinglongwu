@@ -1,13 +1,18 @@
 """#967: speak with the Kokoro voice missing offers a one-click install (no network, no tkinter)."""
 
-from tinglongwu.gui import voice_install
+from tinglongwu.gui import core, voice_install
 from tinglongwu.gui.core import run_voice_install, voice_install_cmd
 
 
 def test_voice_install_offer_missing_kokoro(tmp_path):
     run = {"voice": True}
     assert voice_install.offer_needed(run, tmp_path, str(tmp_path / "no-python"), str(tmp_path / "no-model"))
-    assert "Kokoro" in voice_install.dialog_text("en")
+    assert "Kokoro" not in voice_install.dialog_text("en")  # #1808: plain wording by default
+    core.set_tech_labels(setting=True)
+    try:
+        assert "Kokoro" in voice_install.dialog_text("en")
+    finally:
+        core.set_tech_labels(setting=False)
 
 
 def test_voice_install_offer_not_needed_when_voice_off_or_installed(tmp_path):

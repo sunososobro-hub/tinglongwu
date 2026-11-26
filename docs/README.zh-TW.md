@@ -11,7 +11,7 @@ flowchart LR
   A["⬇ 下載"] --> B["▶ 播放影片"] --> C["💬 字幕"]
 ```
 
-<p align="center"><img src="../assets/readme/modes.zh-TW.svg" alt="🎧 聽：即時字幕 · 🗣️ 說：語音輸出 · 🔁 雙向：雙方互譯" width="720"></p>
+<p align="center"><img src="../assets/readme/modes.zh-TW.svg" alt="🎧 聽：即時字幕 · 🗣️ 說：語音輸出 · 🔁 雙向：雙方互譯" width="720"><br><img src="../assets/demo/mode_listen.gif" alt="🎧 聽" width="240"> <img src="../assets/demo/mode_speak.gif" alt="🗣️ 說" width="240"> <img src="../assets/demo/mode_two_way.gif" alt="🔁 雙向" width="240"></p>
 
 <p align="center"><img src="../assets/readme/facts.zh-TW.svg" alt="語言：中、英、日、韓、俄；印地語實驗 · Windows、Linux、macOS（未驗證）" width="720"></p>
 
@@ -30,7 +30,7 @@ flowchart LR
 |---|---|
 | **Windows 10/11** | **[⬇ 下載 tinglongwu-setup.exe](https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/tinglongwu-setup.exe)**，執行後一直按 **Next** |
 | macOS | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/mac_install.sh \| bash` |
-| Linux (x86_64) | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash` |
+| Linux (x86_64) | `curl -fsSL https://github.com/sunososobro-hub/tinglongwu/releases/latest/download/install.sh \| bash`<br><img src="../assets/demo/install_15s.gif" alt="Linux 在終端機執行 install.sh 直到完成（加速播放）"> |
 
 Windows 會顯示 SmartScreen 警告（安裝程式尚未簽章，#601 完成前如此）：Edge 會先說「不常下載」且沒有「保留」按鈕：滑到檔案上 → … → 保留 → 點「刪除」旁的 ▾ → 仍要保留；之後在 SmartScreen 畫面點「其他資訊 → 仍要執行」。想先檢查？到[發行頁](https://github.com/sunososobro-hub/tinglongwu/releases/latest)下載 `mac_install.sh` / `install.sh`，讀過並與該頁的 `SHA256SUMS.txt` 比對後再執行。
 

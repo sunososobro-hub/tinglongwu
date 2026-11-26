@@ -258,7 +258,7 @@ def test_gui_module_imports_and_language_names():
     from tinglongwu.gui import app
 
     assert set(app.UI_LANGS.values()) == {"zh-TW", "en", "ru", "ja"}
-    assert core.DEFAULTS["theme"] == "dark"
+    assert core.DEFAULTS["theme"] == "auto"
 
 
 # -- #72: subtitles inside the main window (scrolling log), floating bar optional and off by default ---------
@@ -825,3 +825,16 @@ def test_shortcut_row_with_widest_cpu_text_keeps_main_window_narrow(gui_app):
         a.lbl_cpu.configure(text=t("gui_mode_gpu") + "  " + t("gui_cpu", p=100) + "  GPU 100%")
         a.root.update_idletasks()
         assert a.root.winfo_reqwidth() <= MAIN_BAR_MAX_W + 40, ui
+
+
+def test_main_window_live_draft_switch(gui_app):
+    """#1922: the main window has a live-draft checkbox bound to v_live; toggling it changes the setting."""
+    a = gui_app
+    assert str(a.v_live) in _bound_vars(a.toggle_row)
+    start = a.settings["live_draft"]
+    a.chk_live.invoke()
+    assert a.settings["live_draft"] is (not start)
+    a.chk_live.invoke()
+    assert a.settings["live_draft"] is start
+    a.root.update()
+    assert a.toggle_row.winfo_reqwidth() <= 560  # the toggles row keeps the window <= 560 px (#1028)

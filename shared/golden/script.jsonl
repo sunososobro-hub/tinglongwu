@@ -1,0 +1,12 @@
+{"src": "你想說還是不說嗎?", "out": "Do you want to talk or not?", "tgt": "ru", "wrong": true}
+{"src": "你好嗎", "out": "Как дела", "tgt": "zh", "wrong": true}
+{"src": "今天天氣很好", "out": "Привет мир", "tgt": "en", "wrong": true}
+{"src": "Hello, how are you?", "out": "你好，你好吗", "tgt": "en", "wrong": true}
+{"src": "Hello world", "out": "こんにちは", "tgt": "ko", "wrong": true}
+{"src": "Привет", "out": "Hello there", "tgt": "th", "wrong": true}
+{"src": "Hello world", "out": "你好世界", "tgt": "zh", "wrong": false}
+{"src": "Hello world", "out": "Привет мир", "tgt": "ru", "wrong": false}
+{"src": "OK sounds good", "out": "OK 聽起來不錯", "tgt": "zh", "wrong": false}
+{"src": "ok", "out": "ok", "tgt": "en", "wrong": false}
+{"src": "你好", "out": "", "tgt": "ru", "wrong": false}
+{"src": "你好", "out": "bonjour", "tgt": "xx", "wrong": false}

@@ -1,0 +1,118 @@
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import collision_ledger as cl  # noqa: E402
+
+FIX = Path(__file__).parent / "fixtures" / "collision_ledger" / "week.json"
+DATA = json.loads(FIX.read_text(encoding="utf-8"))
+
+
+def test_file_rows():
+    rows = {r["file"]: r for r in cl.file_rows(DATA["prs"])}
+    # a.py: PR1+PR2 open together (1 pair); PR3 opened later -> no extra pair
+    assert rows == {
+        "src/a.py": {"file": "src/a.py", "prs": 3, "pairs": 1, "dirty": 3},
+        "src/b.py": {"file": "src/b.py", "prs": 1, "pairs": 0, "dirty": 1},
+        "docs/x.md": {"file": "docs/x.md", "prs": 1, "pairs": 0, "dirty": 0},
+    }
+    assert cl.file_rows(DATA["prs"])[0]["file"] == "src/a.py"
+
+
+def test_top_10_cap():
+    prs = [{"number": i, "head": "fix/1", "created_at": "2026-11-24T00:00:00Z", "merged_at": "2026-11-24T01:00:00Z",
+            "files": [f"f{i}.py"]} for i in range(15)]
+    assert len(cl.file_rows(prs)) == 10
+
+
+def test_push_causes_redo_p50():
+    assert cl.push_causes(DATA["prs"]) == {"review": 1, "red test": 1, "conflict": 1}
+    assert cl.redo_count(DATA["prs"]) == 1
+    assert cl.test_p50(DATA["prs"]) == 20
+    assert cl.test_p50([]) is None
+
+
+def test_classify_push():
+    assert cl.classify_push("Merge branch 'dev' into fix/1", False) == "conflict"
+    assert cl.classify_push("fix it", True) == "red test"
+    assert cl.classify_push("address review", False) == "review"
+
+
+def test_render_and_cli():
+    text = cl.render(DATA)
+    assert "| src/a.py | 3 | 1 | 3 |" in text
+    assert "| dev-red (failed test runs on dev) | 2 |" in text
+    assert "| test p50 minutes | 20.0 |" in text
+    out = subprocess.run([sys.executable, str(Path(cl.__file__)), "--fixture", str(FIX)],
+                         capture_output=True, text=True, check=True).stdout
+    assert out.strip() == text
+
+
+def test_script_size():
+    assert len(Path(cl.__file__).read_text(encoding="utf-8").splitlines()) <= 300
+
+
+def test_red_at_ignores_later_rerun():
+    runs = [{"completed_at": "2026-11-24T09:05:00Z", "conclusion": "failure"},
+            {"completed_at": "2026-11-24T09:20:00Z", "conclusion": "success"}]
+    assert cl.red_at(runs, cl._ts("2026-11-24T09:10:00Z")) is True   # push B at 09:10 followed a red A
+    assert cl.red_at(runs, cl._ts("2026-11-24T09:30:00Z")) is False  # after the rerun it was green
+    assert cl.red_at(runs, cl._ts("2026-11-24T09:00:00Z")) is False  # nothing known yet
+    assert cl.red_at([], cl._ts("2026-11-24T09:00:00Z")) is False
+
+
+def test_dirty_requeues_matches_board_scan_text_and_pr():
+    cs = [{"body": "requeue: PR #5 is dirty; next worker fixes it on the same branch"},
+          {"body": "requeue: PR #6 is dirty; next worker fixes it on the same branch"},
+          {"body": "requeue: PR #5 is test red; next worker fixes it on the same branch"},
+          {"body": "requeue: PR #55 is dirty; x"}, {"body": "doing"}]
+    assert cl.dirty_requeues(cs, 5) == 1
+
+
+def test_post_comment_starts_with_collision_7d(monkeypatch):
+    """#1903: `--post` sends one comment on #61 whose first line is `[collision 7d]`, then the table."""
+    calls = []
+    monkeypatch.setattr(cl, "collect", lambda now: {"dev_red": 0, "prs": DATA["prs"]})
+    monkeypatch.setattr(cl.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
+    assert cl.main(["--post"]) == 0
+    assert len(calls) == 1
+    cmd = calls[0]
+    assert cmd[:5] == ["gh", "api", "-X", "POST", "repos/sunososobro-hub/tinglongwu/issues/61/comments"]
+    body = cmd[-1].removeprefix("body=")
+    assert body.splitlines()[0] == "[collision 7d]"
+    assert body.split("\n", 1)[1] == cl.render({"dev_red": 0, "prs": DATA["prs"]})
+
+
+def test_no_post_without_flag(monkeypatch):
+    calls = []
+    monkeypatch.setattr(cl, "collect", lambda now: {"dev_red": 0, "prs": []})
+    monkeypatch.setattr(cl.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
+    assert cl.main([]) == 0
+    assert calls == []
+
+
+def test_workflow_weekly_no_pr_code():
+    """#1903: weekly cron + dispatch, only issues write, no PR trigger or PR ref checkout."""
+    import pytest
+    yaml = pytest.importorskip("yaml")
+    wf = yaml.safe_load((Path(__file__).resolve().parents[1] / ".github/workflows/collision-ledger.yml")
+                        .read_text(encoding="utf-8"))
+    on = wf.get("on", wf.get(True))
+    assert set(on) == {"schedule", "workflow_dispatch"}
+    assert len(on["schedule"][0]["cron"].split()[4]) == 1  # one weekday -> weekly
+    assert {k for k, v in wf["permissions"].items() if v == "write"} == {"issues"}
+    steps = wf["jobs"]["ledger"]["steps"]
+    assert all("ref" not in (s.get("with") or {}) for s in steps)
+    assert [s["run"] for s in steps if "run" in s] == ["python scripts/collision_ledger.py --post"]
+
+
+def test_one_push_of_three_commits_counts_once():
+    def c(sha, msg="fix"):
+        return {"sha": sha, "commit": {"message": msg, "committer": {"date": "2026-11-24T09:00:00Z"}}}
+    touch = [c("a"), c("b"), c("c")]
+    assert len(cl.group_pushes(touch, lambda x: x["sha"] == "c")) == 1
+    assert len(cl.group_pushes(touch, lambda x: True)) == 3
+    assert [len(g) for g in cl.group_pushes(touch, lambda x: x["sha"] == "b")] == [2, 1]
+    assert cl.group_pushes([], lambda x: True) == []

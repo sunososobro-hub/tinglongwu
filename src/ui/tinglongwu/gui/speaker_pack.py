@@ -22,6 +22,10 @@ TEXT = {
     "zh-TW": "要下載多人分辨（約 {mb} MB）嗎？只需連網下載一次，之後可離線使用。",
     "ja": "話者の識別には追加パック（約 {mb} MB）が必要です。今ダウンロードしますか？ダウンロードは一度だけです。",
 }
+PLAIN_TEXT = {**TEXT,  # #1808: plain wording (default); TEXT is the technical view
+              "ru": "Для определения говорящих нужно небольшое дополнение (около {mb} МБ). Скачать сейчас? "
+                    "Интернет нужен один раз.",
+              "ja": "話者の識別には小さなアドオン（約 {mb} MB）が必要です。今ダウンロードしますか？ダウンロードは一度だけです。"}
 BUTTONS = {"en": ("Download", "Not now"), "ru": ("Скачать", "Не сейчас"), "zh-TW": ("下載", "稍後"),
            "ja": ("ダウンロード", "あとで")}
 
@@ -88,7 +92,10 @@ def size_mb(mdir, frozen: bool | None = None, pytag: str | None = None, **kw) ->
 
 
 def dialog_text(ui_lang: str, mb: int) -> str:
-    return TEXT.get(ui_lang, TEXT["en"]).format(mb=mb)
+    from .core import tech_labels
+
+    table = TEXT if tech_labels() else PLAIN_TEXT
+    return table.get(ui_lang, table["en"]).format(mb=mb)
 
 
 def on_toggle(want: bool, mdir, ask, start, ui_lang: str = "en", **kw) -> str:

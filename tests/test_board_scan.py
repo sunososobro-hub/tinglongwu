@@ -4,8 +4,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from board_scan import (board_line, run_state, zombie_issue_labels, dev_red_since, dev_red_too_long, is_zombie_branch, needs_triage,
-                        pr_needs_action)
+from board_scan import (supply_item, count_claim_commits, count_doing_claims, is_double_claim, board_line, run_state, zombie_issue_labels, dev_red_since, dev_red_too_long, is_zombie_branch, needs_triage,
+                        pr_needs_action, requeue_action, work_ahead)
 
 NOW = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)  # 17:00 TPE
 
@@ -15,6 +15,9 @@ def ago(m):
 
 
 # PR waiting > 30 min
+TRUSTED = {"github-actions[bot]", "sunososobro-hub"}
+
+
 def test_pr_recent_is_not_flagged():
     assert pr_needs_action(NOW, ago(29), "failure", "dirty", {"needs-opus"}) is None
 
@@ -79,8 +82,34 @@ def test_dev_pending_tip_uses_last_finished():
 
 # output line
 def test_board_line():
-    assert board_line(NOW, []) == "[board 17:00] ok"
-    assert board_line(NOW, ["PR #5 dirty", "triage #9"]) == "[board 17:00] act: PR #5 dirty; triage #9"
+    assert board_line(NOW, []) == "[board 17:00] ok double_claims=0"
+    assert board_line(NOW, ["PR #5 dirty", "triage #9"]) == "[board 17:00] act: PR #5 dirty; triage #9 double_claims=0"
+    assert board_line(NOW, ["double claim #7"], 1) == "[board 17:00] act: double claim #7 double_claims=1"
+
+
+def _c(body, who="sunososobro-hub", at="2026-11-25T01:00:00Z"):
+    return {"body": body, "user": {"login": who}, "created_at": at}
+
+
+def test_single_claim_is_not_double():
+    assert not is_double_claim([_c("doing")], TRUSTED)
+
+
+def test_two_doing_comments_are_a_double_claim():
+    cs = [_c("doing", at="2026-11-25T01:00:00Z"), _c("doing (opus)", at="2026-11-25T01:01:00Z")]
+    assert count_doing_claims(cs, TRUSTED) == 2 and is_double_claim(cs, TRUSTED)
+
+
+def test_requeue_starts_a_new_round():
+    cs = [_c("doing", at="2026-11-25T01:00:00Z"), _c("requeue: PR #3 is dirty; next worker", at="2026-11-25T02:00:00Z"),
+          _c("doing", at="2026-11-25T03:00:00Z")]
+    assert count_doing_claims(cs, TRUSTED) == 1
+
+
+def test_untrusted_and_other_doing_text_ignored():
+    cs = [_c("doing", at="2026-11-25T01:00:00Z"), _c("doing", who="stranger", at="2026-11-25T01:01:00Z"),
+          _c("doing something else", at="2026-11-25T01:02:00Z")]
+    assert count_doing_claims(cs, TRUSTED) == 1
 
 
 def test_zombie_issue_labels():
@@ -129,3 +158,100 @@ def test_dev_red_since_earliest_failure_in_streak():
     # tip failed at -150, parent finished red later at -5, older commit green: streak is 150 min
     hist = [(ago(150), "failure"), (ago(5), "failure"), (ago(400), "success"), (ago(500), "failure")]
     assert dev_red_since(hist) == ago(150)
+
+
+# requeue (owner 2026-11-25): red / dirty / needs-review-ai PRs go back to workers, not an AI babysitter
+def test_pr_needs_review_ai_is_flagged():
+    assert pr_needs_action(NOW, ago(31), "success", "clean", {"needs-review-ai"}) == "needs-review-ai"
+
+
+def test_requeue_red_pr_issue_in_review():
+    assert requeue_action("test red", "fix/12-r2", {"status:review", "ok-to-work"}, 0) == (12, "requeue")
+    assert requeue_action("needs-review-ai", "fix/7", {"status:review"}, 2) == (7, "requeue")
+
+
+def test_requeue_escalates_after_cap():
+    assert requeue_action("dirty", "fix/12", {"status:review"}, 3) == (12, "escalate")
+
+
+def test_requeue_skips_other_cases():
+    assert requeue_action("needs-opus", "fix/12", {"status:review"}, 0) is None
+    assert requeue_action("test red", "feat/12", {"status:review"}, 0) is None
+    assert requeue_action("test red", "fix/12", {"status:doing"}, 0) is None  # a worker already has it
+    assert requeue_action("test red", "fix/12", None, 0) is None  # issue closed
+    assert requeue_action("test red", "fix/12", {"status:review", "needs-owner"}, 0) is None
+
+
+def test_needs_review_ai_waits_for_test():
+    assert pr_needs_action(NOW, ago(60), None, "clean", {"needs-review-ai"}) is None
+
+
+def test_requeue_adds_todo_before_removing_review(monkeypatch):
+    import board_scan
+    calls = []
+
+    def fake_gh(path, *args):
+        calls.append((path, args))
+        if args[:2] == ("-X", "DELETE"):
+            raise RuntimeError("delete failed")
+
+    monkeypatch.setattr(board_scan, "_gh", fake_gh)
+    monkeypatch.setattr(board_scan, "_issue_or_none", lambda n: {"state": "open", "labels": [{"name": "status:review"}]})
+    monkeypatch.setattr(board_scan, "_gh_list", lambda path: [
+        {"user": {"login": "stranger"}, "body": "requeue: fake"}] * 5)  # untrusted comments do not count
+    try:
+        board_scan._requeue(9, "test red", "fix/12")
+    except RuntimeError:
+        pass
+    assert calls[0][1][-1] == "labels[]=status:todo"  # todo added first, so the issue never drops out of both queues
+    assert not any("needs-opus" in str(a) for _, a in calls)  # 5 stranger comments did not escalate
+
+
+def test_1882_claim_commit_alone_is_an_empty_branch():
+    claim = {"commit": {"message": "claim #12 session_x 0a1b2c3d"}}
+    work = {"commit": {"message": "fix #12: the change"}}
+    assert work_ahead({"ahead_by": 1, "commits": [claim]}) == 0
+    assert is_zombie_branch("fix/12", work_ahead({"ahead_by": 1, "commits": [claim]}), False, {"status:todo"})
+    assert work_ahead({"ahead_by": 2, "commits": [claim, work]}) == 1
+    assert work_ahead({"ahead_by": 0, "commits": []}) == 0
+
+
+def _cmp(*msgs):
+    return {"commits": [{"commit": {"message": m}} for m in msgs]}
+
+
+def test_two_claim_commits_on_one_branch_are_counted():
+    assert count_claim_commits(_cmp("claim #7 s1 ab", "fix: x", "claim #7 s2 cd"), 7) == 2
+
+
+def test_claim_commits_of_other_issues_and_work_do_not_count():
+    assert count_claim_commits(_cmp("claim #7 s1 ab", "claim #70 s2 cd", "fix #7: claim #7 text"), 7) == 1
+    assert count_claim_commits({}, 7) == 0
+
+
+def test_supply_flags_nine_todo_items():  # #1893
+    assert supply_item(9) == "supply (9 todo < 10)"
+    assert supply_item(0) == "supply (0 todo < 10)"
+
+
+def test_supply_ok_at_ten_todo_items():  # #1893
+    assert supply_item(10) is None
+    assert supply_item(25) is None
+
+
+def test_scan_reports_supply_when_queue_low(monkeypatch):  # #1893: an empty board still says act: supply
+    import board_scan
+    todo = [{"number": n} for n in range(9)] + [{"number": 99, "pull_request": {}}]
+
+    def fake_list(path):
+        return todo if "labels=status:todo,ok-to-work" in path else []
+
+    monkeypatch.setattr(board_scan, "_gh_list", fake_list)
+    monkeypatch.setattr(board_scan, "_dev_red_too_long", lambda now: False)
+    monkeypatch.setattr(board_scan, "_double_claims", lambda: [])
+    now = datetime(2026, 11, 25, 4, 0, tzinfo=UTC)
+    items, _ = board_scan.scan(now)
+    assert items == ["supply (9 todo < 10)"]
+    assert board_line(now, items).startswith("[board 12:00] act: supply")
+    todo.append({"number": 100})
+    assert board_scan.scan(now)[0] == []

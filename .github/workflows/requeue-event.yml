@@ -1,0 +1,53 @@
+name: requeue-event
+# #1886 (C5 of #1875): requeue a waiting fix/N PR on the event (scripts/requeue_event.py), not on the 30-min
+# board scan, which stays the safety net. Rules only: checks out dev and reads PRs through the API; never runs PR code.
+# push and pull_request_review run from the file on dev; workflow_run starts only once this file is on main.
+on:
+  push:
+    branches: [dev]
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+  pull_request_review:
+    types: [submitted]
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+  checks: read
+concurrency:  # one at a time: a second run then sees the issue already out of status:review
+  group: requeue-event
+  cancel-in-progress: false
+jobs:
+  requeue:
+    if: >-
+      github.repository == 'sunososobro-hub/tinglongwu' && (
+        github.event_name == 'push' ||
+        (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request'
+          && github.event.workflow_run.conclusion != 'success') ||
+        (github.event_name == 'pull_request_review' && github.event.review.user.type == 'Bot'
+          && github.event.pull_request.head.repo.full_name == github.repository
+          && github.event.pull_request.base.ref == 'dev'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          persist-credentials: false
+      - name: requeue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT: ${{ github.event_name }}
+          RUN_PRS: ${{ join(github.event.workflow_run.pull_requests.*.number, ',') }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          REVIEW_PR: ${{ github.event.pull_request.number }}
+          REVIEW_ID: ${{ github.event.review.id }}
+        run: |
+          # the script comes from dev: until this PR merges, a run from its own branch has nothing to call
+          if [ ! -f scripts/requeue_event.py ]; then echo "requeue_event.py not on dev yet: skip"; exit 0; fi
+          case "$EVENT" in
+            push) python scripts/requeue_event.py --event push --apply ;;
+            workflow_run) python scripts/requeue_event.py --event ci --pr "$RUN_PRS" --sha "$RUN_SHA" --apply ;;
+            pull_request_review) python scripts/requeue_event.py --event review --pr "$REVIEW_PR" --review-id "$REVIEW_ID" --apply ;;
+          esac

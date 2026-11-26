@@ -7,12 +7,14 @@ name: mobile-apk
 # The same job also builds the Google Play AAB: the models ride in two fast-follow Play Asset Delivery
 # packs (tool/fill_asset_packs.py) that Play downloads right after install. On dev pushes the AAB is kept as an artifact and, when the
 # PLAY_SA_JSON secret and the release key exist, uploaded to the Play internal track.
-# #1621 phone preview: same-repo PRs touching mobile/** also upload to the internal track (fork PRs never do).
+# #1969: PR runs (same-repo or fork) build the AAB but never upload it; only a dev push uploads (owner tests after merge).
 # Runner: set the repo variable MOBILE_RUNNER=tlwu-mobile to build on the owner's home Windows runner
 # [self-hosted, windows, tlwu-mobile] (warm Gradle/pub/Flutter/NDK/AAR caches on its persistent disk; Git Bash steps).
 # The label can sit on the same machine as the hw runner (tlwu-hw): the two jobs then just queue one after the other.
 # Unset (or any other value) = ubuntu-24.04, unchanged. Fork PRs always use ubuntu-24.04 (never the home machine).
-# Limitation: GitHub cannot fall back after a queue timeout, so if the home runner is off, clear MOBILE_RUNNER.
+# #1823: if no runner picks `build` up within 5 min (home PC off or busy), the `runner-fallback` job re-dispatches this
+# workflow on the same branch with runner=ubuntu and cancels the stuck run (scripts/mobile_runner_fallback.py); the
+# new run's summary prints `runner fallback: ubuntu after <n> min`. No need to clear MOBILE_RUNNER by hand.
 # Windows prerequisites on that machine: Flutter, Android SDK (%LOCALAPPDATA%\Android\Sdk, or ANDROID_HOME), Git for
 # Windows (bash, awk, sha256sum, base64) + `unzip`, Python (`python`; a python3 shim is added per job).
 on:
@@ -21,13 +23,41 @@ on:
     paths: ["mobile/**", ".github/workflows/mobile-apk.yml"]
   pull_request:
     branches: [dev]
-    paths: ["mobile/**", ".github/workflows/mobile-apk.yml"]
+    # #1815: shared MT data and the desktop MT text logic also run the phone tests (flutter test incl. the shared
+    # golden runner), so a desktop-only MT change that breaks the phone goldens shows up on its PR. PR only: a dev
+    # push of desktop code does not rebuild or republish the phone APK.
+    paths: ["mobile/**", ".github/workflows/mobile-apk.yml", "shared/**",
+            "src/core/tinglongwu/hymt.py", "src/core/tinglongwu/engines.py",
+            "src/core/tinglongwu/translate.py", "src/core/tinglongwu/repeat.py"]
   workflow_dispatch:
     inputs:
       x86_64_debug:
         description: "#1511: also build a debug APK with x86_64 native libs (emulator tests; artifact mobile-apk-debug-x86_64)"
         type: boolean
         default: false
+      runner:
+        description: "#1823: auto = MOBILE_RUNNER decides; ubuntu = always ubuntu-24.04 (set by the runner fallback)"
+        type: choice
+        options: [auto, ubuntu]
+        default: auto
+      fallback_after:
+        description: "#1823: set by the runner fallback (minutes the home runner was waited for)"
+        type: string
+        default: ""
+      fallback_event:
+        description: "#1823: set by the runner fallback (event of the cancelled run: push / pull_request / workflow_dispatch)"
+        type: string
+        default: ""
+      source_sha:
+        description: "#1823: set by the runner fallback (github.sha of the cancelled run: PR merge commit or pushed commit)"
+        type: string
+        default: ""
+
+# #1920: a new push to a PR cancels that PR's older, still-running mobile-apk run (one group per PR number). Pushes and
+# dispatches get a group of their own (the run id), so a dev or main push run is never cancelled or replaced.
+concurrency:
+  group: mobile-apk-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions: {}
 
@@ -40,7 +70,7 @@ env:
 
 jobs:
   build:
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.MOBILE_RUNNER == 'tlwu-mobile' && '["self-hosted","windows","tlwu-mobile"]' || '["ubuntu-24.04"]') }}
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.MOBILE_RUNNER == 'tlwu-mobile' && inputs.runner != 'ubuntu' && '["self-hosted","windows","tlwu-mobile"]' || '["ubuntu-24.04"]') }}
     timeout-minutes: 90
     permissions:
       contents: read
@@ -57,6 +87,8 @@ jobs:
         working-directory: mobile
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}   # #1823: a fallback run builds the cancelled run's exact revision (PR merge commit)
       # #1738: on the home runner plain `bash` resolved to the WSL stub (WindowsApps\bash.EXE) and the first
       # bash step exited 1. Put Git for Windows' bin dir on GITHUB_PATH (searched before the system PATH) first.
       - name: Use Git Bash, not the WSL stub (Windows runner)
@@ -67,6 +99,12 @@ jobs:
       - name: Start clock
         working-directory: .
         run: echo "BUILD_START=$(date +%s)" >> "$GITHUB_ENV"
+      - name: Runner fallback note (#1823)
+        if: inputs.fallback_after != ''
+        run: |
+          echo "runner fallback: ubuntu after ${FALLBACK_AFTER} min (home runner did not pick up the build)" | tee -a "$GITHUB_STEP_SUMMARY"
+        env:
+          FALLBACK_AFTER: ${{ inputs.fallback_after }}
       - name: Windows runner prep (SDK location, tool check, python3 shim)
         if: runner.os == 'Windows'
         run: |
@@ -77,14 +115,15 @@ jobs:
           mkdir -p "$RUNNER_TEMP/bin"
           printf '#!/bin/sh\nexec python "$@"\n' > "$RUNNER_TEMP/bin/python3"
           cygpath -m "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-      - name: Decide Play upload (dev push or same-repo PR; never fork PRs)
+      - name: Decide Play upload (dev push only; never PRs, #1969)
         id: plan
         run: python3 -I ../scripts/mobile_upload_plan.py "$EVENT" "$REF" "$REPO" "$HEAD_REPO" "$HAS_PLAY" >> "$GITHUB_OUTPUT"
         env:
-          EVENT: ${{ github.event_name }}
+          # #1823: a fallback run keeps the cancelled run's event, so a dev push still uploads and a PR still does not.
+          EVENT: ${{ inputs.fallback_event || github.event_name }}
           REF: ${{ github.ref }}
           REPO: ${{ github.repository }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || (inputs.fallback_event == 'pull_request' && github.repository || '') }}
       - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: temurin
@@ -187,10 +226,10 @@ jobs:
             # #1169: no model packs in this AAB (default); a pack here would put the 1.3 GB back into every update
             if unzip -l "$AAB" | grep -qE " (models_asr|models_llm)/"; then echo "AAB has model packs but PLAY_MODEL_PACKS is not true"; exit 1; fi
           fi
-          # proto manifest keeps permission names as plain UTF-8 strings; INTERNET is the only network permission (#1567)
+          # proto manifest keeps permission names as plain UTF-8 strings; INTERNET plus ACCESS_NETWORK_STATE (Wi-Fi vs mobile data, #1864) are the only network permissions (#1567)
           unzip -p "$AAB" base/manifest/AndroidManifest.xml > "$RUNNER_TEMP/base.xml"
           grep -aqE "android.permission.INTERNET([^A-Za-z0-9_]|$)" "$RUNNER_TEMP/base.xml" || { echo "AAB lacks INTERNET (pack download)"; exit 1; }
-          if grep -aoE "android.permission.(ACCESS_NETWORK_STATE|CHANGE_NETWORK_STATE|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES|CHANGE_WIFI_MULTICAST_STATE)" "$RUNNER_TEMP/base.xml"; then echo "AAB requests another network permission"; exit 1; fi
+          if grep -aoE "android.permission.(CHANGE_NETWORK_STATE|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES|CHANGE_WIFI_MULTICAST_STATE)" "$RUNNER_TEMP/base.xml"; then echo "AAB requests another network permission"; exit 1; fi
           BASE=$(unzip -Zl "$AAB" | awk '$NF ~ /^base\// {s += $6} END {print s+0}')
           echo "base module compressed bytes: $BASE"
           [ "$BASE" -lt $((200 << 20)) ] || { echo "base module over 200 MB"; exit 1; }
@@ -205,7 +244,7 @@ jobs:
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/aapt" dump permissions "$APK" | tee "$RUNNER_TEMP/perms.txt"
           grep -qE "android.permission.INTERNET([^A-Za-z0-9_]|$)" "$RUNNER_TEMP/perms.txt" || { echo "APK lacks INTERNET (pack download)"; exit 1; }
-          if grep -qE "android.permission.(ACCESS_NETWORK_STATE|CHANGE_NETWORK_STATE|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES|CHANGE_WIFI_MULTICAST_STATE)" "$RUNNER_TEMP/perms.txt"; then echo "APK requests another network permission"; exit 1; fi
+          if grep -qE "android.permission.(CHANGE_NETWORK_STATE|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES|CHANGE_WIFI_MULTICAST_STATE)" "$RUNNER_TEMP/perms.txt"; then echo "APK requests another network permission"; exit 1; fi
           SIGNER="$BT/apksigner"; [ -e "$SIGNER" ] || SIGNER="$BT/apksigner.bat"
           "$SIGNER" verify --print-certs "$APK" | grep -i "SHA-256" | head -1
           rm -f "$RUNNER_TEMP/release.jks"
@@ -267,6 +306,31 @@ jobs:
           M=$(( ($(date +%s) - ${BUILD_START:-$(date +%s)}) / 60 ))
           echo "### mobile build: ${M} min on runner \`${{ runner.name }}\` (${{ runner.environment }}), upload=${{ steps.plan.outputs.upload }}, versionCode=${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
 
+  # #1823: watch the self-hosted build; if no runner takes it within 5 min, re-dispatch on ubuntu and cancel this run.
+  runner-fallback:
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.MOBILE_RUNNER == 'tlwu-mobile' && inputs.runner != 'ubuntu'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write   # read this run's jobs, dispatch mobile-apk.yml, cancel this run
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          sparse-checkout: scripts/mobile_runner_fallback.py
+          sparse-checkout-cone-mode: false
+      - name: Wait for the home runner, else fall back to ubuntu
+        shell: bash   # -eo pipefail: a failed dispatch/cancel fails the step despite tee
+        run: python3 -I scripts/mobile_runner_fallback.py watch | tee -a "$GITHUB_STEP_SUMMARY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          REF: ${{ github.head_ref || github.ref_name }}
+          EVENT: ${{ github.event_name }}
+          SOURCE_SHA: ${{ github.sha }}
+          X86: ${{ inputs.x86_64_debug == true }}
+
   publish:
     needs: build
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/dev'
@@ -282,6 +346,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}   # #1823: a fallback run builds the cancelled run's exact revision (PR merge commit)
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: mobile-apk
@@ -291,7 +357,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
+          SHA: ${{ inputs.source_sha || github.sha }}
           TAG: mobile-latest
           TITLE: tinglongWu mobile (preview)
           ZIP: tlwu-mobile-models.zip

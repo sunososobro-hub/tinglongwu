@@ -15,9 +15,9 @@ on:
   workflow_dispatch:
     inputs:
       whisper:
-        description: "Whisper size for the mini-eval job (#876: measure tiny / base for the slim core, #770). PR runs always use small."
+        description: "Whisper size for the mini-eval job (#876: measure tiny / base for the slim core, #770; #1385: large-v3-turbo = the GUI's Accurate preset). PR runs always use small."
         type: choice
-        options: [small, base, tiny]
+        options: [small, base, tiny, large-v3-turbo]
         default: small
 
 permissions:

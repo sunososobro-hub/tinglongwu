@@ -52,15 +52,8 @@ def set_titlebar_dark(win, dark: bool) -> bool:
     return False
 
 
-def _mtime(p):
-    """#1525: identity of the installed GPU pack folder (a replacement gets a new mtime); None when absent."""
-    try:
-        return p.stat().st_mtime_ns if p is not None else None
-    except OSError:
-        return None
+from .app_gpu import GpuOfferMixin, _mtime  # noqa: E402,F401 - #1917: GPU pack offer line lives there
 
-
-UPDATE_LINE_WRAP_PX = 200  # #455: text + two buttons stay inside the 420 px main window
 # #886: Advanced settings sit in two label + control columns (grid columns 0-2 and 4-6, 3 is a gap), so the panel
 # with Advanced open fits a 1366x768 screen; long labels wrap instead of widening the panel
 SETTING_COLS = 2
@@ -71,22 +64,22 @@ SHORT_SCREEN_PX = 900
 UPDATE_ROW = 14  # #756: grid row of the Check setup / Report / update controls; below the last setting slot (13, #894)
 PAIR_RESTART_MS = 800  # #1020: quiet time after a home-card language change before the running session restarts
 HOME_PAIR_KEYS = ("lang", "target")  # #1020: restart by themselves; the #983 notice is for the other settings
-UPDATE_QUIT_DELAY_MS = 1500  # #698: let the "Updating..." line paint before the window closes
+from .app_update import UPDATE_LINE_WRAP_PX, UPDATE_QUIT_DELAY_MS, UpdateMixin  # noqa: E402,F401 - #1917: auto-update line lives there
 UNINSTALL_URI = "ms-settings:appsfeatures"  # #738: File > Uninstall opens Windows "Installed apps"
 FONT_MENU_SIZES = tuple(range(FONT_MIN, FONT_MAX + 1, 4))  # #738: Settings > Font size choices (12, 16, ... 72)
 UI_LANGS = {"繁體中文": "zh-TW", "English": "en", "Русский": "ru", "日本語": "ja"}
 STATUS_WRAP_MIN_PX = 200  # #1241: status / notice wrap at the panel width, never narrower than this
 BAR_WIDE_PX = 1200  # #1241: from this bar width the 情境 dropdown and the toggles share one row
-FONT_INLINE_PX = 500  # chat toolbar: font controls share the row from this width
+UI_PAD = (6, 1)  # the ONE place that sets the inner padding (x, y px) of every dropdown / button: smaller = tighter
+FONT_INLINE_PX = 900  # chat toolbar: languages + toolbar + font controls share ONE row from this width
 BAR_ONE_ROW_PX = 1200  # the whole bottom bar (情境, toggles, Adjust / Freeze / Start) on one row from this width
 MAIN_W, MAIN_H, MAIN_MIN_W, MAIN_MIN_H = 460, 640, 380, 480  # #1028: the chat-style main window
 # chat bubbles (#1028): other side on the left, me on the right; (bubble background, text) per theme
 # #1644: "latest" = the newest finished line from the other side (brighter, so the eye lands on it first)
 # #1662 Linear-style palette: window / transcript backgrounds differ slightly, 1 px separators, muted secondary text,
 # bright primary text and ONE accent (the existing blue); warn / err are the only other colours
-from .theme import (BG, BUBBLE, DOT, FG_DRAFT, FG_FINAL, FG_SRC, GRIP, GRIP_HOVER, NOTES, PAL, SIDE,  # noqa: E402
-                    SIDE_ACTIVE_FG, WARNING_LIGHT, BAR_BTN, BAR_BTN_ACTIVE)
-FONT_FAMILY = "Microsoft JhengHei UI" if sys.platform == "win32" else "TkDefaultFont"
+from .theme import (resolve_theme, BG, BUBBLE, DOT, FG_DRAFT, FG_FINAL, FG_SRC, GRIP, GRIP_HOVER, NOTES, PAL, SIDE,  # noqa: E402
+                    SIDE_ACTIVE_FG, WARNING_LIGHT, BAR_BTN, BAR_BTN_ACTIVE, FONT_FAMILY, bump, font as tfont, small_size)
 # settings-panel sidebar: dragon logo on a lapis-blue -> lavender gradient (mascot palette), nav drawn on the canvas
 SIDE_W = 168
 SIDE_LOGO_PX = 84
@@ -254,7 +247,7 @@ class Overlay:
         self.font = tkfont.Font(family=fam, size=n, weight="bold")
         for tag in ("final", "draft"):
             self.text.tag_configure(tag, font=self.font)
-        self.text.tag_configure("src", font=(fam, max(9, n * 2 // 3)))
+        self.text.tag_configure("src", font=(fam, small_size(n, 9)))
         self.set_rows(self.rows)
         size_var = getattr(self.app, "v_font", None)
         if size_var is not None and size_var.get() != str(n):
@@ -365,7 +358,7 @@ class Tour:
         w.attributes("-topmost", True)
         self.frm = f = ttk.Frame(w, padding=10, relief="solid", borderwidth=1)
         f.pack()
-        self.title = ttk.Label(f, font=(FONT_FAMILY, 11, "bold"))
+        self.title = ttk.Label(f, font=tfont("body", True))
         self.title.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
         self.step1 = ttk.Label(f)
         self.step1.grid(row=1, column=0, sticky="w")
@@ -512,7 +505,7 @@ class _FloatPane(tk.Toplevel):
         self.geometry(notes_geometry(app.settings, self.winfo_screenwidth(), self.winfo_screenheight()))
         self.protocol("WM_DELETE_WINDOW", app._notes_dock)
         self.bind("<Configure>", self._configure, add="+")
-        set_titlebar_dark(self, app.settings.get("theme") != "light")
+        set_titlebar_dark(self, resolve_theme(app.settings.get("theme")) != "light")
 
     def _configure(self, e):
         if e.widget is not self:
@@ -558,7 +551,7 @@ def _system_cpu_percent(app):
     return max(0, min(100, round(100 * (d_total - d_idle) / d_total)))
 
 
-class App:
+class App(GpuOfferMixin, UpdateMixin):
     def __init__(self):
         self.settings = load_settings()
         core.set_tech_labels(setting=self.settings["tech_labels"])  # #1806
@@ -603,6 +596,7 @@ class App:
         self.quick_mode: str | None = None  # #294: first-screen button that started this session
         self.run_source = "system"
         self.speak_hint: str | None = None  # #710: speak_route() result for this session
+        self.v_live = tk.BooleanVar(master=self.root, value=self.settings["live_draft"])  # #1922: shared by the toolbar switch and the Adjust radios
         self._make_main()
         self._build_controls()
         self._build_quick()
@@ -615,7 +609,7 @@ class App:
         self.overlay = Overlay(self.root, self)
         self._sync_bar()  # #1042: the bar is not on screen before Start
         self.tour = Tour(self)
-        self.apply_theme(self.settings.get("theme", "dark"))
+        self.apply_theme(resolve_theme(self.settings.get("theme")), keep_setting=True)  # #1822: auto follows the OS
         if tour_on_start(self.settings):
             self.show_tour()
         try:
@@ -674,7 +668,7 @@ class App:
 
     @property
     def pal(self) -> dict:
-        return PAL["light" if self.settings.get("theme") == "light" else "dark"]
+        return PAL[resolve_theme(self.settings.get("theme"))]
 
     def _tok(self, w, token: str):
         """#1662: a label whose colour is a palette token (re-tinted on every theme change)."""
@@ -695,8 +689,11 @@ class App:
         except tk.TclError:
             _diag.swallowed(__name__)
 
-    def apply_theme(self, name: str):
-        self.settings["theme"] = name = "light" if name == "light" else "dark"
+    def apply_theme(self, name: str, keep_setting: bool = False):
+        name = "light" if name == "light" else "dark"
+        self.theme_name = name
+        if not keep_setting:  # a user toggle forces that theme; startup keeps "auto"
+            self.settings["theme"] = name
         if sv_ttk is not None:
             try:
                 sv_ttk.set_theme(name)
@@ -707,13 +704,21 @@ class App:
         for style in ("Bar.TButton", "Bar.Toolbutton"):
             st.configure(style, padding=(4, 1))
         st.configure("Adv.Toolbutton", anchor="w", padding=(8, 2))
+        for style in ("TButton", "Toolbutton"):  # UI_PAD: one knob for the whitespace inside widgets
+            st.configure(style, padding=UI_PAD)
+        # a dropdown's own border is 2 px taller than a button's: take it off the top so both sit on one row line
+        st.configure("TCombobox", padding=(UI_PAD[0], max(0, UI_PAD[1] - 1)))
+        if not getattr(self, "_combo_clear_bound", False):  # a readonly dropdown showed its text as a blue selection
+            self._combo_clear_bound = True
+            for ev in ("<<ComboboxSelected>>", "<FocusIn>"):
+                self.root.bind_class("TCombobox", ev, lambda e: e.widget.after_idle(e.widget.selection_clear), add="+")
         pal = self.pal  # #1662: one palette; ttk frames / labels take the window colours, secondary text is muted
         for style in ("TFrame", "TLabel", "TCheckbutton", "TRadiobutton", "Toolbutton"):
             st.configure(style, background=pal["win"])
         st.configure("TLabel", foreground=pal["fg"])
         st.configure("Menu.TMenubutton", padding=(8, 0), background=pal["win"], foreground=pal["fg"])
         st.configure("Card.TFrame", background=pal["win"])
-        st.configure("Start.Accent.TButton", font=(FONT_FAMILY, 13, "bold"), padding=(14, 8))  # #1028: the big Start
+        st.configure("Start.Accent.TButton", font=tfont("title", True), padding=(14, 8))  # #1028: the big Start
         self._retint()
         if sv_ttk is not None and not getattr(self, "_retint_bound", False):
             # #1644: sv_ttk recolours every tk widget on <<ThemeChanged>> (tk_setPalette), after this method has
@@ -737,7 +742,7 @@ class App:
             self.panel.configure(bg=pal["win"])
         except (tk.TclError, AttributeError):
             pass
-        dark = self.settings.get("theme") != "light"
+        dark = resolve_theme(self.settings.get("theme")) != "light"
         for name in ("root", "panel", "topics_win"):
             w = getattr(self, name, None)
             try:
@@ -748,6 +753,9 @@ class App:
         for name in ("menubar", "panel_menubar"):
             if getattr(self, name, None) is not None:
                 self._style_menu(getattr(self, name))
+            row = getattr(self, name + "_row", None)
+            if row is not None and row.winfo_exists():
+                self._style_menu_row(row)
         for name in ("menu_sep", "panel_menubar_sep"):
             w = getattr(self, name, None)
             if w is not None and w.winfo_exists():
@@ -774,7 +782,7 @@ class App:
 
     def _draw_sidebar(self):
         c = self.side
-        pal = SIDE["light" if self.settings.get("theme") == "light" else "dark"]
+        pal = SIDE[resolve_theme(self.settings.get("theme"))]
         c.delete("all")
         h = max(c.winfo_height(), 400)
         top, bot = (tuple(int(col[i:i + 2], 16) for i in (1, 3, 5)) for col in (pal["top"], pal["bottom"]))
@@ -791,8 +799,8 @@ class App:
         if self.side_logo is not None:
             c.create_image(SIDE_W // 2, y, image=self.side_logo, anchor="n")
             y += self.side_logo.height() + 6
-        c.create_text(SIDE_W // 2, y, text="聽攏有", fill=pal["fg"], font=(FONT_FAMILY, 15, "bold"), anchor="n")
-        c.create_text(SIDE_W // 2, y + 30, text="tinglongwu", fill=pal["sub"], font=(FONT_FAMILY, 10), anchor="n")
+        c.create_text(SIDE_W // 2, y, text="聽攏有", fill=pal["fg"], font=tfont("display", True), anchor="n")
+        c.create_text(SIDE_W // 2, y + 30, text="tinglongwu", fill=pal["sub"], font=tfont("caption"), anchor="n")
         y += 74
         for i, (key, glyph, cmd) in enumerate(self.side_nav):
             tag = f"nav{i}"
@@ -800,8 +808,8 @@ class App:
             if active:
                 self._round_rect(12, y - 4, SIDE_W - 12, y + 32, 10, fill=pal["pill"], outline="", tags=tag)
             fg = SIDE_ACTIVE_FG if active else pal["fg"]
-            c.create_text(30, y + 14, text=glyph, fill=fg, font=(FONT_FAMILY, 12, "bold"), tags=tag)
-            c.create_text(52, y + 14, text=t(key), fill=fg, font=(FONT_FAMILY, 11), anchor="w", tags=tag)
+            c.create_text(30, y + 14, text=glyph, fill=fg, font=tfont("title", True), tags=tag)
+            c.create_text(52, y + 14, text=t(key), fill=fg, font=tfont("body"), anchor="w", tags=tag)
             if cmd is not None:
                 c.tag_bind(tag, "<Button-1>", lambda _e, f=cmd: f())
                 c.tag_bind(tag, "<Enter>", lambda _e: c.configure(cursor="hand2"))
@@ -1186,7 +1194,7 @@ class App:
         self.scene_combo.bind("<<ComboboxSelected>>", lambda _e: self._scene_changed())
         # #1544: what the video scene listens to, in plain words, one click to switch (was only under 調整)
         self.source_row = ttk.Frame(b)  # its own row: next to the scene dropdown it pushed the bar past its max width
-        self.btn_source = ttk.Button(self.source_row, command=self._source_toggled)
+        self.btn_source = ttk.Button(self.source_row, command=self._source_toggled, style="Toolbutton")
         self.btn_source.pack(side="left")
         self.toggle_row = row1 = ttk.Frame(b)
         self.v_mic = tk.BooleanVar(value=True)
@@ -1194,6 +1202,9 @@ class App:
         self.btn_mic.pack(side="left")
         self._tx(ttk.Checkbutton(row1, variable=self.v_bar, style="Toolbutton", command=self._bar_toggled),
                  "gui_overlay_s").pack(side="left", padx=(3, 0))
+        # #1922: live-draft switch on the main window; the same var drives the Adjust panel radios
+        self.chk_live = ttk.Checkbutton(row1, variable=self.v_live, style="Toolbutton", command=self._live_toggled)
+        self._tx(self.chk_live, "gui_live_s").pack(side="left", padx=(1, 0))
         # 0.3.8: speaker labels (both scenes); on the toggles row, not the scene row, so the window stays <= 560 px (#1028)
         self.v_spk = tk.BooleanVar(value=bool(self.settings.get("speaker_id")))
         self._tx(ttk.Checkbutton(row1, variable=self.v_spk, command=self._spk_toggled), "gui_spk_s").pack(
@@ -1209,7 +1220,7 @@ class App:
         self.dot.pack(side="left", padx=4)
         self.set_dot("idle")
         self._dot_tip(self.dot)
-        self.btn_pause = ttk.Button(row2, text=t("gui_pause_s"), command=self.toggle_pause)
+        self.btn_pause = ttk.Button(row2, text=t("gui_pause_s"), command=self.toggle_pause, style="Toolbutton")
         self.btn_pause.pack(side="left")
         self.btn = self.both_btn = ttk.Button(row2, text=t("gui_start"), command=lambda: self.toggle(None),
                                               style="Start.Accent.TButton", width=8)
@@ -1409,9 +1420,9 @@ class App:
         self.btn_swap.accessible_name = "swap languages"
         self.btn_settings = ttk.Button(tb, text="\u2699", width=2, command=self.toggle_adjust)
         self.btn_settings.pack(side="right")
-        self.btn_font_up = ttk.Button(tb, text="A+", width=2, command=lambda: self.bump_log_font(2))
+        self.btn_font_up = ttk.Button(tb, text="A+", width=2, style="Toolbutton", command=lambda: self.bump_log_font(2))
         self.btn_font_up.pack(side="right", padx=(0, 4))
-        self.btn_font_down = ttk.Button(tb, text="A-", width=2, command=lambda: self.bump_log_font(-2))
+        self.btn_font_down = ttk.Button(tb, text="A-", width=2, style="Toolbutton", command=lambda: self.bump_log_font(-2))
         self.btn_font_down.pack(side="right", padx=(0, 2))
         self.lbl_offline = ttk.Label(tb, text="", font="TkSmallCaptionFont", width=9, anchor="w")
         self.lbl_offline.pack(side="right", padx=(0, 8))
@@ -1445,6 +1456,17 @@ class App:
                 lbl.pack_forget()
             elif not ready and not lbl.winfo_manager():
                 lbl.pack(anchor="w", fill="x")
+
+    def _notice_refresh(self):
+        """#1662: the notice line takes a row only while it has text (an empty label kept a dark ~20 px band)."""
+        lbl = getattr(self, "lbl_notice", None)
+        if lbl is None:
+            return
+        if self.v_notice.get().strip():
+            if not lbl.winfo_manager():
+                lbl.pack(anchor="w", fill="x")
+        elif lbl.winfo_manager():
+            lbl.pack_forget()
 
     def _pair_menu(self):
         """The pair button opens the existing choices: the other side's language and my language."""
@@ -1622,14 +1644,14 @@ class App:
         self.body = body = ttk.Frame(p, padding=(12, 3, 12, 3))
         body.pack(side="left", fill="both", expand=True)
         short = p.winfo_screenheight() < SHORT_SCREEN_PX  # #886: a 768 px screen has no height to spare
-        self.settings_title = self._tx(ttk.Label(body, font=(FONT_FAMILY, 14, "bold")), "gui_menu_settings")
+        self.settings_title = self._tx(ttk.Label(body, font=tfont("heading", True)), "gui_menu_settings")
         self.settings_title.pack(anchor="w", pady=(0, 2 if short else 4))
         card = "Card.TFrame" if sv_ttk is not None else "TFrame"
 
         def group(title_key):  # #1028: one plain-language group = a bold heading + its choices
             g = ttk.Frame(body, style=card, padding=(10, 3 if short else 5, 10, 3 if short else 5))
             g.pack(fill="x", pady=(0, 3))
-            self._tx(ttk.Label(g, font=(FONT_FAMILY, 11, "bold")), title_key).pack(anchor="w")
+            self._tx(ttk.Label(g, font=tfont("body", True)), title_key).pack(anchor="w")
             return g
 
         g_speed, g_appear = group("gui_set_speed"), group("gui_set_appear")
@@ -1685,7 +1707,7 @@ class App:
         self.var_show_src = tk.BooleanVar(value=s["show_src"])
         self._tx(ttk.Checkbutton(g_rec, variable=self.var_show_src, command=self._src_toggled),
                  "gui_show_src_line").pack(anchor="w")
-        self.v_live = tk.BooleanVar(value=s["live_draft"])  # #1028: subtitle mode = live draft on / off
+        # #1028: subtitle mode = live draft on / off (self.v_live is built with the main-window toolbar, #1922)
         for val, key in ((False, "gui_set_sentence"), (True, "gui_set_live")):
             self._tx(ttk.Radiobutton(g_appear, variable=self.v_live, value=val), key).pack(anchor="w")
         self.v_voice = tk.BooleanVar(value=s["voice"])  # #330: voice into earphones, never the captured device
@@ -1743,362 +1765,14 @@ class App:
                                     justify="left")
         self._tok(self.lbl_notice, "warn")
         self._tok(self.lbl_status, "muted")
-        self.lbl_notice.pack(anchor="w", fill="x")
+        self.v_notice.trace_add("write", lambda *_: self._notice_refresh())  # #1662: no empty band when there is no notice
+        self._notice_refresh()
         sb.bind("<Configure>", lambda e: self._wrap_status(e.width), add="+")  # #1241
         self._build_send_gate(sb)  # #833: in the always-visible status box, not under the collapsed Advanced
         self.v_ui_lang = tk.StringVar(value=next(k for k, v in UI_LANGS.items() if v == ui_lang()))
         if sv_ttk is not None:
-            self.v_dark = tk.BooleanVar(value=self.settings.get("theme", "dark") != "light")
+            self.v_dark = tk.BooleanVar(value=resolve_theme(self.settings.get("theme")) != "light")
         self._build_log(self.chat_holder)
-
-    # -- #698 auto-update -------------------------------------------------------------------------
-    def _build_update_line(self):
-        """One non-blocking line under the bar: "New version ... [Update now] [Later]". Hidden until needed."""
-        self.upd_ver = None  # newer version seen this run
-        self.upd_exe = None  # verified installer path once downloaded
-        self.upd_busy = False  # a check or download child is running
-        self.upd_msg: tuple | None = None  # (i18n key, format kwargs, button keys)
-        u = self.upd_frame = ttk.Frame(self.root, padding=(4, 0, 4, 2))
-        self.v_upd = tk.StringVar()
-        _l = ttk.Label(u, textvariable=self.v_upd, wraplength=UPDATE_LINE_WRAP_PX)
-        _l.pack(side="left")
-        # one line when the window is wide enough; wraps only as the width runs out (text + buttons ~ 300 px)
-        u.bind("<Configure>", lambda e, l=_l: l.configure(wraplength=max(UPDATE_LINE_WRAP_PX, e.width - 300)), add="+")
-        self.upd_no = ttk.Button(u, command=self._update_later, style="Bar.TButton", width=0)
-        self.upd_yes = ttk.Button(u, command=self._update_yes, style="Bar.TButton", width=0)
-        self.upd_apply_when_ready = False
-
-    # -- #1525: GPU speed-up pack offer ---------------------------------------------------------------
-    def _build_gpu_offer(self):
-        """One non-blocking line: "NVIDIA GPU found - install speed-up pack? [Install] [Not now] [Don't ask again]".
-        Hidden unless gpu_offer.should_offer; nvidia-smi runs on a thread, never on the Tk thread."""
-        from . import gpu_offer
-
-        self.gpu_busy = False
-        self.gpu_lines: list[str] = []
-        g = self.gpu_frame = ttk.Frame(self.root, padding=(4, 0, 4, 2))
-        self.v_gpu = tk.StringVar()
-        _l = ttk.Label(g, textvariable=self.v_gpu, wraplength=UPDATE_LINE_WRAP_PX)
-        _l.pack(side="left")
-        # one line when the window is wide enough; wraps only as the width runs out (text + buttons ~ 300 px)
-        g.bind("<Configure>", lambda e, l=_l: l.configure(wraplength=max(UPDATE_LINE_WRAP_PX, e.width - 300)), add="+")
-        self.gpu_bar = ttk.Progressbar(g, mode="indeterminate", length=80)
-        self.gpu_btns = [self._tx(ttk.Button(g, command=c, style="Bar.TButton", width=0), k) for k, c in
-                         (("gpu_offer_never", self._gpu_never), ("gpu_offer_later", self._gpu_hide),
-                          ("gpu_offer_install", self._gpu_install))]
-        self.gpu_auto = None  # #1736: gpu_offer.AutoInstall while the background download runs
-        self.gpu_cancel_btn = self._tx(ttk.Button(g, command=self._gpu_auto_cancel, style="Bar.TButton", width=0),
-                                       "gpu_auto_cancel")
-        probe = not gpu_offer.offline() and not gpu_offer.cpu_mode()
-
-        def work():  # nvidia-smi once, off the Tk thread; also fills the CPU-mode wording cache (core.nvidia_seen)
-            from .core import nvidia_seen
-
-            nvidia_seen()
-            if probe:
-                st = self._gpu_detect()
-                self.q.put(("gpu_state", st))
-                if st == gpu_offer.UNAVAILABLE:  # #1775: no NVIDIA pack to offer -> maybe the Vulkan pack (AMD / Intel)
-                    from . import vulkan_offer
-
-                    self.q.put(("gpu_vk_state", vulkan_offer.gate_for_nvidia(self._vk_detect(), nvidia_seen())))
-
-        threading.Thread(target=work, daemon=True).start()
-
-    @staticmethod
-    def _gpu_detect() -> str:
-        from . import gpu_offer
-
-        try:
-            return gpu_offer.detect()
-        except Exception:  # noqa: BLE001 - no probe: no banner
-            return gpu_offer.UNAVAILABLE
-
-    @staticmethod
-    def _vk_detect() -> str:
-        from . import vulkan_offer
-
-        try:
-            return vulkan_offer.detect()
-        except Exception:  # noqa: BLE001 - no probe: no banner
-            return vulkan_offer.UNAVAILABLE
-
-    def _gpu_show(self, text: str, buttons: bool, busy: bool = False, cancel: bool = False):
-        self.v_gpu.set(text)
-        for b in self.gpu_btns:
-            b.pack_forget()
-        self.gpu_cancel_btn.pack_forget()
-        if cancel:
-            self.gpu_cancel_btn.pack(side="right", padx=(4, 0))
-        if buttons:
-            for b in self.gpu_btns:
-                b.pack(side="right", padx=(4, 0))
-        if busy:
-            self.gpu_bar.pack(side="right", padx=(4, 0))
-            self.gpu_bar.start(15)
-        else:
-            self.gpu_bar.stop()
-            self.gpu_bar.pack_forget()
-        if not self.gpu_frame.winfo_ismapped():
-            self.gpu_frame.pack(fill="x")
-
-    def _gpu_hide(self):
-        self.gpu_bar.stop()
-        self.gpu_frame.pack_forget()
-
-    def _gpu_offer_show(self):
-        from . import gpu_offer
-
-        self._gpu_show(core.ui_text("gpu_offer_banner", size=gpu_offer.GPU_PACK_SIZE), buttons=True)
-
-    def _gpu_never(self):
-        from . import gpu_offer, vulkan_offer
-
-        self.settings[vulkan_offer.DISMISS_KEY if getattr(self, "gpu_vk", False) else gpu_offer.DISMISS_KEY] = True
-        save_settings(self.settings)
-        self._gpu_hide()
-
-    def _vk_install(self):
-        """#1775: one click = Vulkan pack + whisper.cpp model + probe (vulkan_offer.install_cmds / run_install)."""
-        from . import vulkan_offer
-        from .core import run_pack_download
-
-        bg = getattr(self, "bg_dl", None)
-        if vulkan_offer.install_blocked(self.gpu_busy, bool(self.downloading), bool(bg is not None and bg.active)):
-            return
-        vulkan_offer.INSTALLING.set()
-        self.gpu_busy, self.gpu_lines = True, []
-        self._gpu_show(core.ui_text("vk_offer_running"), buttons=False, busy=True)
-        put = lambda ev: self.q.put(("gpu_" + ev[0], *ev[1:]))  # noqa: E731
-        try:
-            threading.Thread(target=vulkan_offer.run_install, args=(run_pack_download, put, vulkan_offer.install_cmds()),
-                             daemon=True).start()
-        except RuntimeError:
-            vulkan_offer.INSTALLING.clear()
-            self.gpu_busy = False
-            self._gpu_show(core.ui_text("vk_offer_banner"), buttons=True)
-
-    def _gpu_auto_cancel(self):
-        """#1736: Cancel on the background-download line: stop the child, remember it, show the one-click offer."""
-        if self.gpu_auto is not None:
-            self.gpu_auto.cancel()
-
-    def _gpu_install(self, auto: bool = False):
-        from . import gpu_offer
-        from .core import run_pack_download
-
-        if getattr(self, "gpu_vk", False):
-            return self._vk_install()
-        if self.gpu_busy or gpu_offer.INSTALLING.is_set() or gpu_offer.offline():
-            return
-        from ..gpu_pack import pack_dir
-
-        pack = pack_dir()
-        failed_at = getattr(self, "gpu_runtime_failed_mtime", None)  # pack replaced since the failure -> trust it
-        if (pack is not None and (not getattr(self, "gpu_runtime_failed", False) or failed_at != _mtime(pack))
-                and gpu_offer._pack_usable(pack)):  # installed meanwhile (e.g. Add-ons); not after a CUDA load failure
-            self._gpu_show(core.ui_text("gpu_offer_ok"), buttons=False)
-            return
-        gpu_offer.INSTALLING.set()
-        self.gpu_busy, self.gpu_lines = True, []
-        put = lambda ev: self.q.put(("gpu_" + ev[0], *ev[1:]))  # noqa: E731 - not the language-pack events
-        if auto:  # #1736: no click; one line with size + progress + Cancel, listening keeps running on the CPU
-            self.gpu_auto = gpu_offer.AutoInstall(run_pack_download, self.settings, lambda: save_settings(self.settings))
-            self._gpu_show(core.ui_text("gpu_auto_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True, cancel=True)
-            target = self.gpu_auto.run_install
-        else:
-            self.gpu_auto = None
-            self._gpu_show(core.ui_text("gpu_offer_running", size=gpu_offer.GPU_PACK_SIZE), buttons=False, busy=True)
-            target = lambda put, **kw: gpu_offer.run_install(run_pack_download, put, **kw)  # noqa: E731
-        try:
-            threading.Thread(target=target, args=(put,), kwargs={"cmd": gpu_offer.gpu_pack_cmd()}, daemon=True).start()
-        except RuntimeError:  # no thread: release the lock and offer Install again
-            gpu_offer.INSTALLING.clear()
-            self.gpu_busy = False
-            self.gpu_auto = None
-            self._gpu_offer_show()
-
-    def _gpu_event(self, ev):
-        from . import gpu_offer
-
-        kind = ev[0]
-        if kind == "gpu_state":
-            if not self.gpu_busy and gpu_offer.should_offer(ev[1], gpu_offer.cpu_mode(), bool(self.settings.get(gpu_offer.DISMISS_KEY)),
-                                      gpu_offer.offline()):
-                if gpu_offer.should_autostart(ev[1], gpu_offer.cpu_mode() or not self._gpu_allowed(), bool(self.settings.get(gpu_offer.DISMISS_KEY)),
-                                              gpu_offer.offline(), bool(self.settings.get(gpu_offer.AUTO_OFF_KEY))):
-                    self._gpu_install(auto=True)  # #1736: download by default, the user can cancel
-                else:
-                    self._gpu_offer_show()
-        elif kind == "gpu_vk_state":
-            from . import vulkan_offer
-
-            if not self.gpu_busy and vulkan_offer.should_offer(ev[1], False, bool(self.settings.get(vulkan_offer.DISMISS_KEY)),
-                                                               gpu_offer.offline()):
-                self.gpu_vk = True
-                self._gpu_show(core.ui_text("vk_offer_banner"), buttons=True)
-        elif kind == "gpu_pack_line":
-            self.gpu_lines = [*self.gpu_lines[-20:], ev[1]]
-        elif kind == "gpu_pack_done":
-            self.gpu_busy = False
-            auto, self.gpu_auto = self.gpu_auto, None
-            if auto is not None and auto.outcome(ev[2], self.gpu_lines) == "cancelled":  # #1736: stays on CPU, offer remains
-                self._gpu_offer_show()
-            elif getattr(self, "gpu_vk", False):  # #1775: the Vulkan pack has its own wording (no CUDA restart notice)
-                from . import vulkan_offer
-
-                cpu = vulkan_offer.cpu_backends(self.gpu_lines) if ev[2] == 0 else []
-                self._gpu_show(core.ui_text("vk_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)) if ev[2] != 0
-                               else core.ui_text("vk_offer_ok_cpu", cpu=" + ".join(cpu)) if cpu else core.ui_text("vk_offer_ok"), buttons=False)
-            elif gpu_offer.install_ok(ev[2], self.gpu_lines):
-                self.gpu_runtime_failed = False  # a fresh pack replaced the one that failed to load
-                self._gpu_show(core.ui_text("gpu_offer_ok"), buttons=False)
-            else:
-                self._gpu_show(core.ui_text("gpu_offer_fail", reason=gpu_offer.fail_reason(self.gpu_lines)), buttons=False)
-
-    def _upd_show(self, key: str, buttons: tuple[str, str] | None = None, **kw):
-        self.upd_msg = (key, kw, buttons)
-        self.v_upd.set(t(key, **kw))
-        self.upd_yes.pack_forget()
-        self.upd_no.pack_forget()
-        if buttons:
-            self.upd_yes.configure(text=t(buttons[0]))
-            self.upd_no.configure(text=t(buttons[1]))
-            self.upd_no.pack(side="right")
-            self.upd_yes.pack(side="right", padx=(4, 2))
-        if not self.upd_frame.winfo_ismapped():
-            self.upd_frame.pack(fill="x")
-
-    def _upd_relabel(self):
-        if self.upd_msg:
-            key, kw, buttons = self.upd_msg
-            self._upd_show(key, buttons, **kw)
-
-    def _update_later(self):
-        self.upd_msg = None
-        self.upd_frame.pack_forget()
-
-    def _apply_pending_update(self) -> bool:
-        """#779: a verified installer downloaded in the background last time is applied before the user starts
-        working: one short status line, no question. True when the apply helper was started."""
-        if autoupdate.is_wizard_install():
-            autoupdate.cleanup_old()  # #946: *.old left by an app-layer update; this start succeeded
-        if not autoupdate.is_wizard_install() or autoupdate.offline():
-            return False
-        path = autoupdate.pending_to_apply(userdirs.read_config(), __version__)
-        if not path:
-            return False
-        self.upd_exe = path
-        autoupdate.clear_pending()  # a failed apply must not loop on every launch
-        self._apply_update()
-        return True
-
-    def _auto_update_check(self):
-        if not autoupdate.can_update():
-            return
-        if autoupdate.is_wizard_install() and self._apply_pending_update():
-            return
-        if autoupdate.should_auto_check(userdirs.read_config()):
-            autoupdate.mark_checked()
-            self._check_update(manual=False)
-
-    def _check_update(self, manual: bool):
-        if self.upd_busy:
-            return
-        if self.upd_exe:  # already downloaded this run
-            self._upd_show("gui_upd_ready", ("gui_upd_restart", "gui_upd_later"), ver=self.upd_ver)
-            return
-        self.upd_busy = True
-        if manual:
-            self.set_status("gui_checking")
-        if autoupdate.is_git_checkout():  # #1672: Linux / git-checkout macOS follow auto_update.sh
-            threading.Thread(target=autoupdate.run_git_check, args=(self.q.put, manual, __version__), daemon=True).start()
-            return
-        threading.Thread(target=autoupdate.run_check, args=(__version__, self.q.put, manual), daemon=True).start()
-
-    def _update_found(self, ver: str, manual: bool):
-        self.upd_busy = False
-        self.upd_ver = ver
-        if manual:
-            self.set_status("gui_ready")
-        if autoupdate.auto_on(userdirs.read_config()) and not manual:
-            self._download_update(silent=True)  # auto_update=1: fetch quietly, ask only "Restart now?"
-        else:
-            self._upd_show("gui_upd_available", ("gui_upd_now", "gui_upd_later"), ver=ver)
-
-    def _update_yes(self):
-        if self.upd_msg and self.upd_msg[0] == "gui_upd_fail_check":
-            import webbrowser
-
-            webbrowser.open(autoupdate.recovery_url())
-            self._update_later()
-        elif self.upd_exe:
-            self._apply_update()
-        elif self.upd_ver and not self.upd_busy:
-            self._download_update(silent=False)
-
-    def _download_update(self, silent: bool):
-        self.upd_busy = True
-        self.upd_apply_when_ready = not silent  # "Update now" clicked: install as soon as it is verified
-        if not silent:
-            self._upd_show("gui_upd_downloading", ver=self.upd_ver, pct=0)
-        if autoupdate.is_git_checkout():
-            threading.Thread(target=autoupdate.run_git_apply, args=(self.q.put,), daemon=True).start()
-            return
-        threading.Thread(target=autoupdate.run_download, args=(self.q.put,), daemon=True).start()
-
-    def _update_event(self, ev) -> bool:
-        """Handle an upd_* queue event; False when `ev` is not one."""
-        kind = ev[0]
-        if kind == "upd_found":
-            self._update_found(ev[1], ev[2])
-        elif kind == "upd_none":
-            self.upd_busy = False
-            if ev[1]:
-                self._status_text(t("gui_upd_none", ver=__version__))
-        elif kind == "upd_fail_check":  # #1526: a failed manual check must not read as "latest"
-            self.upd_busy = False
-            self.upd_ver = None
-            self._upd_show("gui_upd_fail_check", ("gui_upd_open_page", "gui_upd_later"), why=ev[1])
-        elif kind == "upd_progress":
-            if self.upd_msg and self.upd_msg[0] == "gui_upd_downloading":
-                self._upd_show("gui_upd_downloading", ver=self.upd_ver, pct=ev[1])
-        elif kind == "upd_ready":
-            self.upd_busy = False
-            if not self.upd_apply_when_ready and self.upd_ver:  # #779: quiet download -> install at next launch
-                autoupdate.set_pending(self.upd_ver, ev[1])
-                self.upd_exe = ev[1]  # a manual "Check for updates" now offers the staged installer, no re-download
-                if autoupdate.claim_prompt(userdirs.read_config()):  # at most one line per day
-                    self._upd_show("gui_upd_staged", ver=self.upd_ver)
-                return True
-            self.upd_exe = ev[1]
-            if self.upd_apply_when_ready:
-                self._apply_update()
-            else:
-                self._upd_show("gui_upd_ready", ("gui_upd_restart", "gui_upd_later"), ver=self.upd_ver)
-        elif kind == "upd_git_done":  # #1672
-            self.upd_busy = False
-            self._upd_show("gui_upd_git_deps" if len(ev) > 1 and ev[1] else "gui_upd_git_done")
-        elif kind == "upd_fail":
-            self.upd_busy = False
-            if self.upd_apply_when_ready:  # silent background failures stay silent
-                self._upd_show("gui_upd_fail", ("gui_upd_now", "gui_upd_later"), why=ev[1])
-        else:
-            return False
-        return True
-
-    def _apply_update(self):
-        self._upd_show("gui_upd_applying")
-        self.root.update_idletasks()
-        try:
-            rc = autoupdate.start_apply(self.upd_exe)
-        except Exception as e:  # noqa: BLE001
-            self._upd_show("gui_upd_fail", ("gui_upd_now", "gui_upd_later"), why=type(e).__name__)
-            return
-        if rc:  # #1348: the file failed its signature / SHA256 re-check; nothing was started, so keep running
-            self._upd_show("gui_upd_fail", ("gui_upd_now", "gui_upd_later"), why="verify")
-            return
-        self.root.after(UPDATE_QUIT_DELAY_MS, self.quit)  # the helper waits for this process, then installs and restarts the GUI
 
     # -- #738 menu bar: File / Settings / Help hold the rarely used actions ------------------------------------
     def build_menubar(self):
@@ -2170,11 +1844,24 @@ class App:
             setattr(self, sepname, sep)
         for w in row.winfo_children():
             w.destroy()
-        for i in range(mb.index("end") + 1):
-            ttk.Menubutton(row, text=mb.entrycget(i, "label"), style="Menu.TMenubutton",
-                           menu=mb.nametowidget(mb.entrycget(i, "menu"))).pack(side="left")
+        for i in range(mb.index("end") + 1):  # plain text, no box, no arrow; a soft fill only under the pointer
+            tk.Menubutton(row, text=mb.entrycget(i, "label"), font=tfont("caption"), bd=0, relief="flat",
+                          padx=10, pady=5, cursor="hand2", takefocus=1,
+                          menu=mb.nametowidget(mb.entrycget(i, "menu"))).pack(side="left")
         self._style_menu(mb)
+        self._style_menu_row(row)
         getattr(self, sepname).configure(bg=self.pal["sep"])
+
+    def _style_menu_row(self, row):
+        """Flat text menu bar (File / Settings / Help): window colour, hover fill from the palette."""
+        pal = self.pal
+        try:
+            row.configure(style="TFrame")
+        except tk.TclError:
+            pass
+        for w in row.winfo_children():
+            if isinstance(w, tk.Menubutton):
+                w.configure(bg=pal["win"], fg=pal["fg"], activebackground=pal["sep"], activeforeground=pal["fg"])
 
     def _maybe_ask_usage(self):
         if usage_should_ask(self.settings) and getattr(self, "usage_win", None) is None:
@@ -2252,24 +1939,24 @@ class App:
         # `lang`, same variable as tour step 1); quick_settings() turns them into listen: other -> mine, speak: mine -> other.
         q = self.top_frame
         tgt = self.combos["target"]
-        self._tx(ttk.Label(q), "gui_quick_target").grid(row=0, column=0, sticky="w")
+        # one line, like a sentence: other side's language -> my language (no field labels; the arrow says it)
+        self.home_lang = ttk.Combobox(q, textvariable=self.v_lang, values=lang_labels(), state="readonly", width=9)
+        self.home_lang.grid(row=0, column=0, sticky="w", pady=(0, 2))
+        self._tok(ttk.Label(q, text="→", font=tfont("title")), "muted").grid(row=0, column=1, padx=8)
         self.home_target = ttk.Combobox(q, textvariable=tgt.cget("textvariable"), values=tgt.cget("values"),
-                                        state="readonly", width=7)
-        self.home_target.grid(row=0, column=1, sticky="w", padx=(4, 8), pady=(0, 2))
-        self._tx(ttk.Label(q), "gui_quick_other").grid(row=1, column=0, sticky="w")  # own row: never wider than the window
-        self.home_lang = ttk.Combobox(q, textvariable=self.v_lang, values=lang_labels(), state="readonly", width=7)
-        self.home_lang.grid(row=1, column=1, sticky="w", padx=(4, 8))
+                                        state="readonly", width=9)
+        self.home_target.grid(row=0, column=2, sticky="w", pady=(0, 2))
         q.columnconfigure(4, weight=1)  # spare width goes to the right, the pickers stay grouped at the left
         self.v_pair = tk.StringVar()  # #981: "same language" is said at once, before Start
         # #982: the inline error (v_pair only carries the state text)
         self.lang_err = self._tok(ttk.Label(q, wraplength=MAIN_W - 40, justify="left"), "err")
-        self.lang_err.grid(row=2, column=0, columnspan=4, sticky="w")
+        self.lang_err.grid(row=1, column=0, columnspan=4, sticky="w")
         self.ru_notice = ttk.Frame(q)  # lasting "Russian voice not downloaded" line + [Download]
         self.ru_notice_lbl = self._tok(ttk.Label(self.ru_notice), "warn")
         self.ru_notice_lbl.pack(side="left")
         self.ru_notice_btn = ttk.Button(self.ru_notice, command=self._ru_voice_ask)
         self.ru_notice_btn.pack(side="left", padx=(8, 0))
-        self.ru_notice.grid(row=3, column=0, columnspan=4, sticky="w")
+        self.ru_notice.grid(row=2, column=0, columnspan=4, sticky="w")
         self.ru_notice.grid_remove()
         for v in (self.v_lang, self.v_target):
             v.trace_add("write", lambda *_: self._pair_changed())
@@ -2352,9 +2039,10 @@ class App:
         """The conversation in the main window (#1028): chat bubbles, other side on the left, me on the right, the
         original text small under each bubble; scrolling history, newest at the bottom (#72)."""
         self.v_bar = tk.BooleanVar(value=self.settings["floating_bar"])
-        bar = ttk.Frame(f)  # one dense toolbar: save / copy / topics at the left, font + A- A+ at the right
-        bar.pack(side="top", fill="x")
-        fb = ttk.Frame(f)
+        # one row with the language pickers: [other -> mine]  save / copy / topics / load  ...  font + A- A+
+        bar = ttk.Frame(self.top_frame)
+        bar.grid(row=3, column=0, columnspan=6, sticky="w")  # narrow window: its own row (wide: _font_place moves it up)
+        fb = ttk.Frame(self.top_frame)
         self.font_box = fb
         try:  # every font the system has; "" = the program's default
             fams = sorted({f for f in tkfont.families(self.root) if not f.startswith("@")}, key=str.lower)
@@ -2377,9 +2065,9 @@ class App:
         # row under the font row, so the main window keeps its #1028 width in every UI language
         bar2 = bar
         ttk.Checkbutton(bar2, text=t("gui_save"), variable=self.v_save).pack(side="left")
-        ttk.Button(bar2, text=t("gui_copy_all"), command=lambda: self._log_copy(True)).pack(side="left", padx=(6, 0))
-        ttk.Button(bar2, text=t("gui_topics_menu"), command=self._topics_toggle).pack(side="left", padx=(6, 0))
-        self.lbl_cpu = ttk.Label(bar2, text="", font="TkSmallCaptionFont")  # smaller: Linux fonts run wider (#1632)
+        ttk.Button(bar2, text=t("gui_copy_all"), style="Toolbutton", command=lambda: self._log_copy(True)).pack(side="left", padx=(6, 0))
+        ttk.Button(bar2, text=t("gui_topics_menu"), style="Toolbutton", command=self._topics_toggle).pack(side="left", padx=(6, 0))
+        self.lbl_cpu = self._tok(ttk.Label(bar2, text="", font="TkSmallCaptionFont"), "muted")  # smaller: Linux fonts run wider (#1632)
         self.lbl_cpu.pack(side="left", padx=(6, 0))
         self._cpu_prev = None
         self._cpu_poll()
@@ -2392,11 +2080,13 @@ class App:
             if inline == self._font_inline:
                 return
             self._font_inline = inline
-            fb.pack_forget()
-            if inline:
-                fb.pack(in_=bar, side="right")
-            else:
-                fb.pack(in_=f, side="top", anchor="e", before=box)
+            fb.grid_forget()
+            if inline:  # wide: languages, toolbar and font controls share ONE row
+                bar.grid(row=0, column=3, columnspan=1, sticky="w", padx=(16, 0))
+                fb.grid(row=0, column=5, sticky="e")
+            else:  # narrow: the toolbar and the font controls each get their own row under the languages
+                bar.grid(row=3, column=0, columnspan=6, sticky="w", padx=0)
+                fb.grid(row=4, column=0, columnspan=6, sticky="e")
         f.bind("<Configure>", _font_place, add="+")
         self._log_holder, self._log_box = box, box
         sb = ttk.Scrollbar(box, orient="vertical")
@@ -2442,10 +2132,10 @@ class App:
     def _chat_tags(self, n: int | None = None):
         """Bubble look per theme (#1028): background colour on the text = the bubble; margins push it to a side."""
         n = n or self.settings["log_font_size"]
-        pal = BUBBLE["light" if self.settings.get("theme") == "light" else "dark"]
+        pal = BUBBLE[resolve_theme(self.settings.get("theme"))]
         tx = self.log_text
         tx.configure(bg=pal["bg"])
-        small = max(8, n * 2 // 3)
+        small = small_size(n)
         fam = self.settings.get("font_family") or FONT_FAMILY  # user-picked system font, else the default
         # #1052: a bubble is at most ~75 % of the window and hugs its text: the background sits on the text only
         # (the line break is outside the bubble tag), margins push it to its side
@@ -2464,7 +2154,7 @@ class App:
             tx.tag_configure(f"{side}_draft", background=bg, foreground=pal["sub"], font=(fam, n), spacing1=2,
                              spacing3=2, **base)
             tx.tag_configure(f"{side}_src", foreground=pal["sub"], font=(fam, small), **base)
-        tx.tag_configure("hint", foreground=pal["sub"], font=(fam, small + 2), justify="center", spacing1=40)
+        tx.tag_configure("hint", foreground=pal["sub"], font=(fam, bump(small, 2)), justify="center", spacing1=40)
         lbg, lfg = pal["latest"]  # #1644: laid over other_final on the newest line, so it must win
         tx.tag_configure("other_latest", background=lbg, foreground=lfg)
         tx.tag_raise("other_latest")
@@ -2478,9 +2168,9 @@ class App:
                 return
             n = n or self.settings["log_font_size"]
             fam = fam or self.settings.get("font_family") or FONT_FAMILY
-            small = small or max(8, n * 2 // 3)
+            small = small or small_size(n)
             tt.configure(font=(fam, n))
-            tt.tag_configure("title", font=(fam, n + 1, "bold"))
+            tt.tag_configure("title", font=(fam, bump(n), "bold"))
             tt.tag_configure("when", font=(fam, small))
         except Exception:  # noqa: BLE001 - cosmetic
             pass
@@ -2931,7 +2621,7 @@ class App:
             inner = [c for c in holder.winfo_children() if isinstance(c, tk.Text) or isinstance(c, ttk.Scrollbar)]
             w = self.topics_win = (_FloatPane(self) if notes_float_on(self.settings)
                                    else _DockPane(self, holder, before=inner[0] if inner else None))
-            ttk.Label(w, text=t("gui_topics_title"), font=("TkDefaultFont", 11, "bold")).pack(side="top", anchor="w", padx=8, pady=(4, 0))
+            ttk.Label(w, text=t("gui_topics_title"), font=tfont("body", True)).pack(side="top", anchor="w", padx=8, pady=(4, 0))
             bar = ttk.Frame(w)
             bar.pack(side="top", fill="x", padx=8, pady=6)
             self._sync_topics_var()
@@ -3050,7 +2740,7 @@ class App:
 
     def _notes_tags(self):
         """#1644: the notes text follows the app theme; time range muted, bullet marks in the notes accent."""
-        pal = NOTES["light" if self.settings.get("theme") == "light" else "dark"]
+        pal = NOTES[resolve_theme(self.settings.get("theme"))]
         tx = self.topics_text
         tx.configure(bg=pal["bg"], fg=pal["fg"], insertbackground=pal["fg"])
         tx.tag_configure("title", foreground=pal["title"])
@@ -3140,6 +2830,10 @@ class App:
         core.set_tech_labels(setting=self.v_tech.get())
         self.relabel()  # #1807: labels and status lines follow the switch at once
         self._relabel_combos()
+
+    def _live_toggled(self):
+        """#1922: the main-window live-draft switch; Start reads the var, so settings follow at once."""
+        self.settings["live_draft"] = self.v_live.get()
 
     def _src_toggled(self):
         self.settings["show_src"] = self.var_show_src.get()

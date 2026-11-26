@@ -15,6 +15,7 @@ ROOT_ALLOWLIST = {
     "install.bat",  # double-click entry of the source ZIP and the wizard's Repair shortcut (as small as a stub)
     "install.ps1",  # stub -> scripts/install.ps1 (older release bootstraps, run_install.ps1)
     "update.bat",  # stub -> scripts/update.bat (older installs double-click the root copy)
+    "OWNERS",  # #1918: repo-wide OWNERS defaults, the parent every folder OWNERS inherits from
     "requirements.txt",  # stub -> requirements/requirements.txt (older update.py / auto_update.sh)
 }
 
