@@ -106,3 +106,49 @@ def test_summary_mic_rms_na_without_log(tmp_path):
                        cwd=tmp_path, env=_env(tmp_path, bin_dir), capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
     assert "emulator mic RMS dBFS" in (tmp_path / "summary.md").read_text(encoding="utf-8")
+
+
+def test_emulator_starts_windowed_on_xvfb(tmp_path):
+    """Round 2: the headless qemu (-no-window) never opened PulseAudio, so the step runs the windowed build under
+    xvfb-run and records which qemu binaries link libpulse."""
+    bin_dir = tmp_path / "bin"; bin_dir.mkdir()
+    (tmp_path / "rt").mkdir()
+    sdk = tmp_path / "sdk"
+    xcalls = tmp_path / "xvfb.calls"
+    _stub(bin_dir, "xvfb-run", f'echo "$*" >> "{xcalls}"')
+    _stub(bin_dir, "ldd", 'case "$1" in *headless) echo "libc.so.6 => /lib/libc.so.6";; '
+                          '*) echo "libpulse.so.0 => /usr/lib/libpulse.so.0 (0x1)";; esac')
+    tools = sdk / "cmdline-tools" / "latest" / "bin"; tools.mkdir(parents=True)
+    _stub(tools, "avdmanager", 'mkdir -p "$ANDROID_AVD_HOME/e2e.avd"; touch "$ANDROID_AVD_HOME/e2e.avd/config.ini"')
+    (sdk / "platform-tools").mkdir(parents=True)
+    _stub(sdk / "platform-tools", "adb", 'if [ "$2" = getprop ]; then echo 1; fi')
+    qd = sdk / "emulator" / "qemu" / "linux-x86_64"; qd.mkdir(parents=True)
+    _stub(qd, "qemu-system-x86_64", "true")
+    _stub(qd, "qemu-system-x86_64-headless", "true")
+    r = subprocess.run([BASH, "--noprofile", "--norc", "-e", "-o", "pipefail", "-c",
+                        _step("Start the emulator")["run"]],
+                       cwd=tmp_path, env=_env(tmp_path, bin_dir), capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
+    for _ in range(50):  # the emulator is started with nohup ... &
+        if xcalls.exists():
+            break
+        subprocess.run(["sleep", "0.1"])
+    args = xcalls.read_text(encoding="utf-8").split()
+    assert args[0] == "-a" and f"{sdk}/emulator/emulator" in args
+    emu_args = args[args.index(f"{sdk}/emulator/emulator") + 1:]
+    assert "-no-window" not in emu_args and "-allow-host-audio" in emu_args
+    cfg = (tmp_path / ".android" / "avd" / "e2e.avd" / "config.ini").read_text(encoding="utf-8")
+    assert "hw.audioInput=yes" in cfg
+    qa = (tmp_path / "rt" / "qemu-audio.txt").read_text(encoding="utf-8")
+    assert "qemu-system-x86_64: libpulse.so.0 => /usr/lib/libpulse.so.0" in qa
+    assert "qemu-system-x86_64-headless: \n" in qa
+
+
+def test_summary_lists_qemu_audio(tmp_path):
+    bin_dir = tmp_path / "bin"; bin_dir.mkdir()
+    (tmp_path / "rt").mkdir()
+    (tmp_path / "rt" / "qemu-audio.txt").write_text("qemu-system-x86_64: libpulse.so.0 => /x\n", encoding="utf-8")
+    r = subprocess.run([BASH, "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", _step("Job summary")["run"]],
+                       cwd=tmp_path, env=_env(tmp_path, bin_dir), capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert "- qemu audio: qemu-system-x86_64: libpulse.so.0 => /x" in (tmp_path / "summary.md").read_text("utf-8")
