@@ -1,4 +1,4 @@
-"""#1917 part 5: subtitle rows (queue sinks, SubtitleState) and speaker labels live in gui/core_subtitles.py.
+"""#1917 part 5: subtitle rows (queue sinks, SubtitleState) and the speaker label text live in gui/core_subtitles.py.
 
 gui/core.py re-exports every moved name, so `from tinglongwu.gui.core import SubtitleState` and `core.PENDING_MARK`
 keep working, and the moved code behaves as before.
@@ -14,8 +14,7 @@ from tinglongwu.gui import core, core_subtitles
 from tinglongwu.sink import Result
 
 MOVED = ("SPEAK_MARK", "QueueSink", "wrap_bubble", "_zh_display", "SpeakQueueSink", "QueueDraftRenderer",
-         "strip_silent_hint", "speaker_text", "PENDING_MARK", "SubtitleState", "SPK_PALETTE", "SPK_AVATAR_FG",
-         "SpeakerColors", "speaker_prefix", "speaker_initial")
+         "strip_silent_hint", "speaker_text", "PENDING_MARK", "SubtitleState")
 
 
 def test_core_reexports_the_same_objects():

@@ -1,5 +1,5 @@
 """#1917: subtitle rows split out of gui/core.py (the #3 hot file): the queue sinks that turn worker results into
-GUI events, SubtitleState (what the overlay / scroll-back shows), and the speaker labels / avatar colors.
+GUI events, SubtitleState (what the overlay / scroll-back shows), and speaker_text (a bubble's speaker name).
 
 No tkinter here either; gui.core re-exports every name, so `from tinglongwu.gui.core import SubtitleState` keeps working.
 """
@@ -260,45 +260,3 @@ class SubtitleState:
     def last_text(self) -> str:
         rows = self.lines()
         return rows[-1][0] if rows else ""
-
-
-# 0.3.8: speaker avatars. Colorblind-friendly (Okabe-Ito based) hues that read on the dark navy chat background.
-SPK_PALETTE = ("#E69F00", "#56B4E9", "#2EC4A0", "#F0E442", "#CC79A7", "#FF8C69", "#9BB7FF", "#B8E986")
-SPK_AVATAR_FG = "#0B1220"  # dark text on the colored badge
-
-
-class SpeakerColors:
-    """Speaker label -> palette color, assigned in first-seen order and kept for the session (a rename never changes it;
-    more speakers than colors reuse the palette from the start)."""
-
-    def __init__(self, palette=SPK_PALETTE):
-        self.palette = tuple(palette)
-        self._idx: dict[str, int] = {}
-
-    def color(self, raw: str) -> str:
-        if raw not in self._idx:
-            self._idx[raw] = len(self._idx)
-        return self.palette[self._idx[raw] % len(self.palette)]
-
-
-def speaker_prefix(book, colors, raw, fmt):
-    """Floating-subtitle prefix of a line: (text, color) like ("\u25cf Speaker 2: ", a hex colour), or None without a
-    resolved speaker. Same name lookup (speaker_text: renames, "Speaker N" in the UI language) and same palette color
-    as the main-window avatar, so the bar needs no extra row: the prefix sits in front of the line's own text."""
-    shown = speaker_text(book, raw, fmt) if raw else None
-    if not shown:
-        return None
-    sep = "\uff1a" if any(ord(c) > 0x2e80 for c in shown) else ": "
-    return f"\u25cf {shown}{sep}", colors.color(raw)
-
-
-def speaker_initial(book, raw: str) -> str:
-    """The avatar text: the speaker number for the default "Speaker N" label, else the first character of the name."""
-    from ..speakers import LABEL_PREFIX
-
-    shown = book.display(raw) if raw else None
-    if not shown:
-        return ""
-    if shown.startswith(LABEL_PREFIX) and shown[len(LABEL_PREFIX):].isdigit():
-        return shown[len(LABEL_PREFIX):]
-    return shown[:1].upper()

@@ -1241,10 +1241,10 @@ def listen_outputs(names=None) -> list[str]:
     return listen_names(list(names))
 
 
-# #1917: subtitle events -> rows (queue sinks, SubtitleState) and speaker labels live in core_subtitles; same names here
+# #1917: subtitle events -> rows (queue sinks, SubtitleState) and the speaker label text live in core_subtitles; same names here
 from .core_subtitles import (  # noqa: F401
-    PENDING_MARK, SPEAK_MARK, SPK_AVATAR_FG, SPK_PALETTE, QueueDraftRenderer, QueueSink, SpeakerColors, SpeakQueueSink,
-    SubtitleState, _zh_display, speaker_initial, speaker_prefix, speaker_text, strip_silent_hint, wrap_bubble,
+    PENDING_MARK, SPEAK_MARK, QueueDraftRenderer, QueueSink, SpeakQueueSink, SubtitleState, _zh_display, speaker_text,
+    strip_silent_hint, wrap_bubble,
 )
 
 
@@ -1312,6 +1312,48 @@ def slow_load_line(elapsed: float) -> str:
     from ..i18n import t
 
     return t("gui_load_slow") if elapsed >= SLOW_LOAD_SECS else ""
+
+
+# 0.3.8: speaker avatars. Colorblind-friendly (Okabe-Ito based) hues that read on the dark navy chat background.
+SPK_PALETTE = ("#E69F00", "#56B4E9", "#2EC4A0", "#F0E442", "#CC79A7", "#FF8C69", "#9BB7FF", "#B8E986")
+SPK_AVATAR_FG = "#0B1220"  # dark text on the colored badge
+
+
+class SpeakerColors:
+    """Speaker label -> palette color, assigned in first-seen order and kept for the session (a rename never changes it;
+    more speakers than colors reuse the palette from the start)."""
+
+    def __init__(self, palette=SPK_PALETTE):
+        self.palette = tuple(palette)
+        self._idx: dict[str, int] = {}
+
+    def color(self, raw: str) -> str:
+        if raw not in self._idx:
+            self._idx[raw] = len(self._idx)
+        return self.palette[self._idx[raw] % len(self.palette)]
+
+
+def speaker_prefix(book, colors, raw, fmt):
+    """Floating-subtitle prefix of a line: (text, color) like ("\u25cf Speaker 2: ", a hex colour), or None without a
+    resolved speaker. Same name lookup (speaker_text: renames, "Speaker N" in the UI language) and same palette color
+    as the main-window avatar, so the bar needs no extra row: the prefix sits in front of the line's own text."""
+    shown = speaker_text(book, raw, fmt) if raw else None
+    if not shown:
+        return None
+    sep = "\uff1a" if any(ord(c) > 0x2e80 for c in shown) else ": "
+    return f"\u25cf {shown}{sep}", colors.color(raw)
+
+
+def speaker_initial(book, raw: str) -> str:
+    """The avatar text: the speaker number for the default "Speaker N" label, else the first character of the name."""
+    from ..speakers import LABEL_PREFIX
+
+    shown = book.display(raw) if raw else None
+    if not shown:
+        return ""
+    if shown.startswith(LABEL_PREFIX) and shown[len(LABEL_PREFIX):].isdigit():
+        return shown[len(LABEL_PREFIX):]
+    return shown[:1].upper()
 
 
 def default_listen_cmd(mdir=None, bundled: bool | None = None) -> list[str]:
