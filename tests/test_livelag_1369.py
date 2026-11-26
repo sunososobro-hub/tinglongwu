@@ -70,8 +70,8 @@ def test_measured_fixed_build_growth_passes_and_the_25_s_drift_fails():
 def test_baseline_noise_8_4_s_at_60_passes_and_limits_follow_the_baseline():
     # #2008: 15 baseline runs peaked at 8.37 s (lag 60 s) and 3.27 s growth; p95 8.37 / 2.74 + margin
     assert ll.LAG_AT_60_MAX == 9.5 and ll.GROWTH_MAX == 4.0
-    res = ll.score(_recs(lambda e: 6.8))  # delay 6.8 s + the segment cadence = lag ~8.4 s
-    assert res["pass"] and 8.3 < res["lag_60_s"] < 8.5, res
+    res = ll.score(_recs(lambda e: 6.8))  # lag 8.05 s: failed under the old 8.0 s limit (fix/1917-r4)
+    assert res["pass"] and 8.0 < res["lag_60_s"] < 8.1, res
 
 
 def test_lag_over_9_5_s_at_60_fails():
