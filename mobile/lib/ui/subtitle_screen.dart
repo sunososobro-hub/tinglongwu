@@ -7,6 +7,7 @@ import 'package:sensors_plus/sensors_plus.dart';
 import '../logic/conversation.dart';
 import '../logic/debug_stats.dart';
 import '../logic/lang_pack.dart';
+import '../logic/mic_permission.dart';
 import '../logic/model_manifest.dart';
 import '../logic/phone_audio.dart';
 import '../logic/speech_out.dart';
@@ -434,7 +435,10 @@ class _Footer extends StatelessWidget {
                     ? null
                     : () {
                         final m = ScaffoldMessenger.of(context);
-                        pipeline.onNotice = (t) => m.showSnackBar(SnackBar(content: Text(t)));
+                        pipeline.onNotice = (t) => m.showSnackBar(micPermissionSnackBar(t,
+                            onRetry: t == MicPermission.deniedText
+                                ? () => pipeline.setPaused(false)
+                                : null));
                         pipeline.setPaused(!stopped);
                       },
                 child: Container(
@@ -537,7 +541,7 @@ class _SourceToggle extends StatelessWidget {
       );
       if (go == true) await PlaybackCapture.requestOverlayPermission();
     }
-    pipeline.onNotice = (t) => messenger.showSnackBar(SnackBar(content: Text(t)));
+    pipeline.onNotice = (t) => messenger.showSnackBar(micPermissionSnackBar(t));
     final msg = await pipeline
         .setSource(toPhone ? AudioSourceKind.phone : AudioSourceKind.mic);
     if (msg != null) messenger.showSnackBar(SnackBar(content: Text(msg)));
