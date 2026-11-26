@@ -155,6 +155,16 @@ class MainActivity : FlutterFragmentActivity() {
                             result.success(false)
                         }
                     }
+                    // Opens this app's system settings page (permissions), for "don't ask again" (#1928).
+                    "openAppSettings" -> {
+                        try {
+                            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.parse("package:$packageName")))
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    }
                     // Other apps' audio + floating subtitles (#998).
                     "playbackCaptureSupported" -> result.success(Build.VERSION.SDK_INT >= 29)
                     "startPlaybackCapture" -> {
