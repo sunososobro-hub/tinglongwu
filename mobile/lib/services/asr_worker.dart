@@ -323,7 +323,7 @@ class AsrWorker {
               tokens: r.pack.tokens,
               numThreads: cfg.numThreads,
               provider: 'cpu',
-              modelType: 'transducer',
+              modelType: r.pack.modelType,
               debug: false,
             ),
           ),

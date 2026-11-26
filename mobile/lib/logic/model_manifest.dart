@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'lang_pack.dart';
+import 'optional_groups.dart';
 import 'speech_out.dart';
 
 /// One model file the app knows: where it goes under `models/`, and its exact size and SHA-256.
@@ -140,6 +141,7 @@ class ModelManifest {
     this.packs = const [],
     this.speakerModel,
     this.speakerNote = '',
+    this.optionalGroups = const [],
   }) {
     // File names must be unique among the models and inside each voice pack (a zip is matched by
     // file name); a voice may reuse a model's name (`tokens.txt`) because its zip is read alone.
@@ -164,6 +166,9 @@ class ModelManifest {
       if (got.length != p.files.length || got.length != want.length || !got.containsAll(want)) {
         throw FormatException('pack ${p.id} must hold exactly ${want.join(', ')}');
       }
+    }
+    for (final g in optionalGroups) {
+      unique(g.files);
     }
     final paths = <String>{};
     for (final f in allFiles) {
@@ -192,9 +197,16 @@ class ModelManifest {
   final ManifestEntry? speakerModel;
   final String speakerNote;
 
-  /// Models, voice files and the speaker model.
-  List<ManifestEntry> get allFiles =>
-      [...files, for (final p in packs) ...p.files, ?speakerModel];
+  /// Optional language groups of `models_manifest.json` (`optional_groups`, #1833).
+  final List<OptionalGroup> optionalGroups;
+
+  /// Models, voice files, optional-group files and the speaker model.
+  List<ManifestEntry> get allFiles => [
+        ...files,
+        for (final p in packs) ...p.files,
+        for (final g in optionalGroups) ...g.files,
+        ?speakerModel
+      ];
 
   /// [json] is `models_manifest.json`; [packsJson] (optional) is `voice_packs.json`.
   factory ModelManifest.parse(String json, {String? packsJson}) {
@@ -216,6 +228,10 @@ class ModelManifest {
           ? null
           : ManifestEntry.fromJson({...(pj!['speaker'] as Map<String, dynamic>), 'group': 'speaker'}),
       speakerNote: ((pj?['speaker'] as Map?)?['note'] as String?) ?? '',
+      optionalGroups: [
+        for (final e in ((j['optional_groups'] as Map?) ?? const {}).entries)
+          OptionalGroup.fromJson(e.key as String, e.value as Map<String, dynamic>)
+      ],
     );
   }
 
@@ -234,6 +250,10 @@ class ModelManifest {
   /// Name -> target path for the entries to take out of the zip [zipName]: a voice pack's files
   /// (by file name or upstream alias) when the zip is that pack, else the models.
   Map<String, String> zipTargetsFor(String zipName) {
+    final n = normalizeName(zipName).toLowerCase();
+    for (final g in optionalGroups) {
+      if (normalizeName(g.zip).toLowerCase() == n) return {for (final f in g.files) f.basename: f.path};
+    }
     final p = packForZip(zipName);
     if (p == null) return basenameTargets;
     return {
