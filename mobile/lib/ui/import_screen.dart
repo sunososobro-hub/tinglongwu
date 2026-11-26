@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../logic/model_manifest.dart';
 import '../logic/optional_groups.dart';
-import '../logic/optional_groups.dart';
 import '../services/model_importer.dart';
 import '../services/model_paths.dart';
 import '../services/play_packs.dart';
