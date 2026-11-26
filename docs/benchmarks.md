@@ -342,3 +342,25 @@ What this shows:
 Reproduce: dispatch `topic-bakeoff` (input `candidates`, empty = all), or locally `python scripts/topic_bakeoff.py --fetch qwen3-4b-2507 --dir cand` then `python scripts/topic_bakeoff.py --model qwen3-4b-2507=cand/qwen3-4b-2507/Qwen3-4B-Instruct-2507-Q4_K_M.gguf --out r.json`; the per-segment notes are in the job log.
 
 </details>
+
+## Whisper small vs large-v3-turbo (#1987, #1385)
+
+Is the Accurate preset's `large-v3-turbo` worth its cost over the CPU default `small`? One eval run, [45420731358](https://github.com/sunososobro-hub/tinglongwu/actions/runs/45420731358) (same commit, CPU, 5 FLEURS clips per pair, so the sample is small): `small` ran in the `low-end-cpu` job, `large-v3-turbo` in the `mini-eval` job. Source numbers: the #1385 comment of 2026-11-24 15:10 UTC.
+
+| pair | ASR metric | small: WER/CER | large-v3-turbo: WER/CER | small: chrF | large-v3-turbo: chrF |
+|---|---|---|---|---|---|
+| en -> zh | WER | 7.8% | 7.8% | 38.90 | 38.88 |
+| ja -> zh | CER | 15.6% | 8.0% | 19.58 | 24.02 |
+| ru -> zh | WER | 4.2% | 4.2% | 29.58 | 29.06 |
+| zh -> en | CER | 13.5% | 0.7% | 48.63 | 63.05 |
+
+| | small | large-v3-turbo |
+|---|---|---|
+| ASR RTF | ~0.19 | 0.42-0.58 |
+| peak RSS | 4692 MiB | 3107 MiB |
+
+Note: the two jobs used different thread budgets, so the speed (RTF) and RSS columns are indicative only.
+
+What this shows:
+- `large-v3-turbo` clearly helps Japanese and Chinese sources (ja CER 15.6% -> 8.0%, zh CER 13.5% -> 0.7%, zh -> en chrF +14.4); English and Russian sources are unchanged within noise.
+- It costs about 2-3x the ASR time of `small` in this run.

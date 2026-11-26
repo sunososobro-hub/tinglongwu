@@ -38,7 +38,7 @@ When it helps: Russian as the source language is the weakest row for 1.8B. On th
 | Model | Source repo | Maintainer | Notes |
 |---|---|---|---|
 | Whisper tiny/base/small/medium/large-v3 (CT2) | `Systran/faster-whisper-*` | SYSTRAN | MIT |
-| **Whisper large-v3-turbo (CT2)** | `mobiuslabsgmbh/faster-whisper-large-v3-turbo` | **mobiuslabsgmbh (third party, not OpenAI or SYSTRAN)** | MIT; a community CTranslate2 conversion, trust is limited to its pinned commit and hashes |
+| **Whisper large-v3-turbo (CT2)** | `mobiuslabsgmbh/faster-whisper-large-v3-turbo` | **mobiuslabsgmbh (third party, not OpenAI or SYSTRAN)** | MIT; a community CTranslate2 conversion, trust is limited to its pinned commit and hashes; [small vs large-v3-turbo eval](benchmarks.md#whisper-small-vs-large-v3-turbo-1987-1385) |
 
 ## Languages (moved from the README, #342)
 Focus languages are Japanese, English and Russian (Chinese is the base). Every other language still works for Listen, but is **experimental**: less tested, and menus / the GUI label it so.
