@@ -7,6 +7,7 @@ import 'package:sensors_plus/sensors_plus.dart';
 import '../logic/conversation.dart';
 import '../logic/debug_stats.dart';
 import '../logic/lang_pack.dart';
+import '../logic/mic_permission.dart';
 import '../logic/model_manifest.dart';
 import '../logic/phone_audio.dart';
 import '../logic/speech_out.dart';
@@ -14,9 +15,11 @@ import '../logic/target_language.dart';
 import '../logic/tilt_flip.dart';
 import '../services/pipeline.dart';
 import '../services/playback_capture.dart';
+import 'a11y.dart';
 import 'advanced_screen.dart';
 import 'conversation_sheet.dart';
 import 'history_screen.dart';
+import 'notice_snack_bar.dart';
 import 'subtitle_bubble.dart';
 
 /// Palette shared with the desktop app (tinglongwu/gui/app.py), dark values.
@@ -399,6 +402,19 @@ class _Footer extends StatelessWidget {
   Widget build(BuildContext context) {
     final st = listenStateOf(pipeline);
     final stopped = pipeline.paused;
+    // One guarded entry for touch and TalkBack: installs the notice handler (with a retry on the
+    // denied line) before starting, so the permission line always shows (#1963).
+    final VoidCallback? onMicActivate =
+        pipeline.switchingSource || pipeline.stage != Stage.listening
+            ? null
+            : () {
+                final m = ScaffoldMessenger.of(context);
+                pipeline.onNotice = (t) => m.showSnackBar(noticeSnackBar(t,
+                    onRetry: t == MicPermission.deniedText
+                        ? () => pipeline.setPaused(false)
+                        : null));
+                pipeline.setPaused(!stopped);
+              };
     return Container(
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: UiColors.line)),
@@ -417,14 +433,19 @@ class _Footer extends StatelessWidget {
                   decoration: BoxDecoration(color: st.dot, shape: BoxShape.circle),
                 ),
                 const SizedBox(width: 6),
-                Text(st.label, style: const TextStyle(fontSize: 12, color: UiColors.sub)),
+                LiveRegion(
+                    child: Text(st.label,
+                        style: const TextStyle(fontSize: 12, color: UiColors.sub))),
               ]),
             ),
             Tooltip(
-              message: stopped ? '開始聆聽' : '停止聆聽',
-              child: GestureDetector(
+              message: micLabel(stopped: stopped),
+              child: MicSemantics(
+                stopped: stopped,
+                onTap: onMicActivate,
+                child: GestureDetector(
                 key: const Key('micButton'),
-                onTap: pipeline.switchingSource ? null : () => pipeline.setPaused(!stopped),
+                onTap: onMicActivate,
                 child: Container(
                   width: 62,
                   height: 62,
@@ -440,6 +461,7 @@ class _Footer extends StatelessWidget {
                   child: Icon(stopped ? Icons.mic_off : Icons.mic,
                       size: 28, color: Colors.white),
                 ),
+              ),
               ),
             ),
             Expanded(
@@ -524,9 +546,10 @@ class _SourceToggle extends StatelessWidget {
       );
       if (go == true) await PlaybackCapture.requestOverlayPermission();
     }
+    pipeline.onNotice = (t) => messenger.showSnackBar(noticeSnackBar(t));
     final msg = await pipeline
         .setSource(toPhone ? AudioSourceKind.phone : AudioSourceKind.mic);
-    if (msg != null) messenger.showSnackBar(SnackBar(content: Text(msg)));
+    if (msg != null) messenger.showSnackBar(noticeSnackBar(msg));
   }
 
   @override
@@ -601,14 +624,17 @@ void _showOverlaySettings(BuildContext context, Pipeline pipeline, [VoidCallback
             children: [
               const Text('字幕顯示', style: TextStyle(fontSize: 18)),
               const SizedBox(height: 8),
-              SegmentedButton<SubtitleMode>(
-                showSelectedIcon: false,
-                segments: [
-                  for (final m in SubtitleMode.values)
-                    ButtonSegment(value: m, label: Text(m.label)),
-                ],
-                selected: {st.mode},
-                onSelectionChanged: (v) => pipeline.setSubtitleMode(v.first),
+              NamedGroup(
+                label: '字幕顯示方式',
+                child: SegmentedButton<SubtitleMode>(
+                  showSelectedIcon: false,
+                  segments: [
+                    for (final m in SubtitleMode.values)
+                      ButtonSegment(value: m, label: Text(m.label)),
+                  ],
+                  selected: {st.mode},
+                  onSelectionChanged: (v) => pipeline.setSubtitleMode(v.first),
+                ),
               ),
               const SizedBox(height: 4),
               const Text('雙語：原文在上（小字），譯文在下。聽龍畫面和浮動視窗都適用。',

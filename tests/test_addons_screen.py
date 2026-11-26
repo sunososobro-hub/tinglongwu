@@ -81,11 +81,15 @@ def test_screen_builds_rows_and_runs_fake_download(tmp_path):
     import time
 
     t0 = time.time()
-    while "ja installed" not in s.msg.get() and time.time() - t0 < 5:  # bounded wait for the worker thread
+    def done():  # plain default text (#1808) or the tech view's old text
+        m = s.msg.get()
+        return "Japanese add-on installed" in m or "ja installed" in m
+
+    while not done() and time.time() - t0 < 5:  # bounded wait for the worker thread
         s.win.update()
         s._poll()
         time.sleep(0.01)
-    assert got == [("ja", tmp_path)] and "ja installed" in s.msg.get() and not s.busy
+    assert got == [("ja", tmp_path)] and done() and not s.busy
     root.destroy()
 
 

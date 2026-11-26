@@ -13,7 +13,7 @@ a) Technically decidable -> decide it yourself.
    - PR held by a gate (install scripts, netguard, rules files, size, …) whose diff you checked and find sound. Every condition must hold:
      - g1: base `dev`, head in this repo, author is the owner. Head not `fix/N`, `fix/N-rK` or `feat/N` -> rules §2: open / reuse the issue, re-push the same commits as `fix/<issue>`, open a new PR, close the old one.
      - g2: `Closes` / `Refs` present; the issue has `ok-to-work` and no `needs-owner` / `status:frozen` / `status:proposal`.
-     - g6: `mergeable_state` is `clean`. `behind` -> update-branch, next run. `dirty` -> resolve in place (rules §7); only if that fails, close the PR and put the issue back to `status:todo`.
+     - g6: `mergeable_state` is `clean`, or `unstable` with every required check of rules §14 Green `success` (only a non-required check is red, #1984). `blocked` -> skip this run. `behind` -> update-branch, next run. `dirty` -> resolve in place (rules §7); only if that fails, close the PR and put the issue back to `status:todo`.
      - g7: check CI once per rules §3 / §17 (`test`, plus `mobile-apk` / `mini-eval` on their paths). Not complete -> leave it for the next run, don't wait.
      - g9: merge with the reviewed head SHA.
      - g10 acceptance: re-read the issue `Acceptance:` and the PR's measured results; measure measurable items yourself once on the PR head. Not met or not listed -> no merge, one-line comment naming the failed item, issue back to `status:todo` (需實測 items excepted).

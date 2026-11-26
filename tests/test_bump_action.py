@@ -106,3 +106,28 @@ def test_new_section_goes_after_fence_and_before_old_release():
     new = b.bump_files('__version__ = "0.4.8"\n', fenced, "0.4.9", ["- x."])[1]
     close = new.index("```", new.index("```") + 3)
     assert close < new.index("## v0.4.9") < new.index("## v0.4.8")
+
+
+def test_red_snapshot_recovery_bumps_past_a_missing_tag():  # #1893
+    assert not d(at(11, 5), tags={"v0.4.7"})[0]
+    ok, _ = d(at(11, 5), tags={"v0.4.7"}, red_snapshot_recovery=True)
+    assert ok
+    # hotfix and open-bump exclusions still hold
+    assert not d(at(11, 5), tags={"v0.4.7"}, red_snapshot_recovery=True, open_bump_pr=True)[0]
+    assert not d(at(11, 5), tags={"v0.4.7"}, red_snapshot_recovery=True, hotfix_active=True)[0]
+    assert not d(at(11, 5), tags={"v0.4.7"}, red_snapshot_recovery=True, hotfix_backmerge_open=True)[0]
+
+
+def test_snapshot_red_uses_newest_required_run():  # #1893
+    red = {"id": 1, "name": "e2e", "status": "completed", "conclusion": "failure"}
+    green = {"id": 2, "name": "e2e", "status": "completed", "conclusion": "success"}
+    assert b.snapshot_red([red])
+    assert not b.snapshot_red([red, green])  # a passing rerun clears it
+    assert not b.snapshot_red([{**red, "name": "lint"}])  # not a REQUIRED_CHECKS workflow
+    assert not b.snapshot_red([{**red, "status": "in_progress", "conclusion": None}])
+
+
+def test_last_release_tag_falls_back_to_newest_older_tag():  # #1893: P0/P1 window and bullets without v<dev>
+    assert b.last_release_tag("0.5.8", {"v0.5.8", "v0.5.7"}) == "v0.5.8"
+    assert b.last_release_tag("0.5.8", {"v0.5.6", "v0.5.7", "v0.5.7-rc1", "mac-ok"}) == "v0.5.7"
+    assert b.last_release_tag("0.5.8", {"mac-ok"}) is None

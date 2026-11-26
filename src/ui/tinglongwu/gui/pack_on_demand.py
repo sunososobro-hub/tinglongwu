@@ -17,6 +17,15 @@ TEXT = {
           "потом работает офлайн.",
     "zh-TW": "這需要「{pack}」語言包（約 {mb} MB，約 {min} 分鐘）。只需連網下載一次，之後可離線使用。",
 }
+# #1808: plain wording (default); TEXT above is the technical view ("Show technical details"). {name} = core.pack_name.
+PLAIN_TEXT = {
+    "en": "This needs the {name} add-on (about {mb} MB, about {min} min). Needs internet to download once, "
+          "works offline afterwards.",
+    "ru": "Нужно дополнение «{name}» (около {mb} МБ, около {min} мин). Для однократной загрузки нужен интернет, "
+          "потом работает офлайн.",
+    "zh-TW": "這需要「{name}」附加元件（約 {mb} MB，約 {min} 分鐘）。只需連網下載一次，之後可離線使用。",
+    "ja": "「{name}」アドオンが必要です（約 {mb} MB、約 {min} 分）。インターネットは一度だけ必要で、その後はオフラインで動きます。",
+}
 BUTTONS = {"en": ("Download", "Not now"), "ru": ("Скачать", "Не сейчас"), "zh-TW": ("下載", "稍後")}
 
 
@@ -27,8 +36,12 @@ def est_minutes(mb: float, mbps: float | None = None) -> int:
 
 
 def dialog_text(ui_lang: str, pack: str, mb: float, mbps: float | None = None) -> str:
-    tag = ui_lang if ui_lang in TEXT else "en"
-    return TEXT[tag].format(pack=pack, mb=round(mb), min=est_minutes(mb, mbps))
+    from .core import pack_name, tech_labels  # lazy: core is the heavier module
+
+    table = TEXT if tech_labels() else PLAIN_TEXT
+    tag = ui_lang if ui_lang in table else "en"
+    name = pack_name(pack, tag)
+    return table[tag].format(pack=pack, name=name, mb=round(mb), min=est_minutes(mb, mbps))
 
 
 def needed_packs(source_lang: str, target_lang: str) -> list[str]:

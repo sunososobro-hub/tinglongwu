@@ -27,8 +27,8 @@ PACKS = mp.load_packs()
 ALL_ZIPS = {p["name"] for p in PACKS}
 
 
-def test_manifest_has_the_three_conversation_packs():
-    assert {p["id"] for p in PACKS} == {"voice-en", "voice-ru", "lang-ru"}
+def test_manifest_has_the_conversation_packs():
+    assert {p["id"] for p in PACKS} == {"voice-en", "voice-ru", "voice-zh", "lang-ru"}
 
 
 def test_no_markers_means_every_pack_is_rebuilt():
@@ -39,7 +39,7 @@ def test_marked_body_is_up_to_date_and_mark_is_idempotent():
     body = mp.mark(PACKS, "notes\n", [p["id"] for p in PACKS])
     assert mp.stale(PACKS, body, ALL_ZIPS) == []
     assert mp.mark(PACKS, body, ["voice-ru"]) == body
-    assert body.count("<!-- tlwu-pack:") == 3
+    assert body.count("<!-- tlwu-pack:") == 4
 
 
 def test_missing_zip_is_rebuilt_even_when_marked():

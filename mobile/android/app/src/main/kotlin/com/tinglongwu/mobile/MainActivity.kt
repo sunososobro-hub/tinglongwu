@@ -23,7 +23,7 @@ import io.flutter.plugin.common.MethodChannel
 // activity-result launcher.
 class MainActivity : FlutterFragmentActivity() {
     private val importer by lazy { ModelImporter(this) }
-    private val downloader by lazy { PackDownloader() }
+    private val downloader by lazy { PackDownloader(applicationContext) }
     private val playConfirm: ActivityResultLauncher<IntentSenderRequest> =
         registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
             play.onConfirmResult(r.resultCode == RESULT_OK)
@@ -135,6 +135,8 @@ class MainActivity : FlutterFragmentActivity() {
                         ch.invokeMethod("downloadProgress", mapOf("done" to done, "total" to total))
                     }
                     "cancelDownload" -> { downloader.cancel(); result.success(null) }
+                    // Wi-Fi or mobile data? (#1864, read-only, no connection opened.)
+                    "networkFacts" -> result.success(NetworkProbe.facts(this))
                     // Models from Google Play fast-follow asset packs (only when installed from Play).
                     "playLocations" -> result.success(play.locations())
                     "playStatus" -> play.status(result)
@@ -150,6 +152,16 @@ class MainActivity : FlutterFragmentActivity() {
                     "openUrl" -> {
                         try {
                             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(call.argument<String>("url"))))
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    }
+                    // Opens this app's system settings page (permissions), for "don't ask again" (#1928).
+                    "openAppSettings" -> {
+                        try {
+                            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.parse("package:$packageName")))
                             result.success(true)
                         } catch (e: Exception) {
                             result.success(false)

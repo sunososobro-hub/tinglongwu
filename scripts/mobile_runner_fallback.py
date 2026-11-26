@@ -58,14 +58,29 @@ def watch(get_jobs, wait_min: float = WAIT_MIN, poll_s: float = POLL_S,
         sleep(min(poll_s, wait_min * 60 - waited))
 
 
+class GhError(RuntimeError):
+    """A `gh api` call failed; the message carries the command and gh's own stderr (#1993)."""
+
+
 def _gh(args: list[str], body: dict | None = None) -> str:
-    r = subprocess.run(["gh", "api", *args] + (["--input", "-"] if body is not None else []),
-                       input=json.dumps(body) if body is not None else "",
-                       capture_output=True, text=True, check=True)
+    cmd = ["gh", "api", *args] + (["--input", "-"] if body is not None else [])
+    r = subprocess.run(cmd, input=json.dumps(body) if body is not None else "",
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        detail = (r.stderr or r.stdout or "").strip() or "(no output)"
+        raise GhError(f"{' '.join(cmd)} exited {r.returncode}: {detail}")
     return r.stdout
 
 
 def main(argv: list[str]) -> int:
+    try:
+        return _main(argv)
+    except GhError as e:
+        print(f"runner fallback failed: {e}", file=sys.stderr)
+        return 1
+
+
+def _main(argv: list[str]) -> int:
     if argv[1:] != ["watch"]:
         print(__doc__, file=sys.stderr)
         return 2

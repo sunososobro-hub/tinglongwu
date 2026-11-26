@@ -41,10 +41,20 @@ EVAL_PATH_RE = re.compile(r"^(?:src/[^/]+/tinglongwu/|eval/|src/system/tinglongw
                           r"|scripts/bench/make_ci_smoke\.py$|\.github/workflows/eval[^/]*\.yml$)")
 
 # #1918: protected / g4 paths (section 14) live in the per-folder OWNERS files, read by scripts/owners.py from
-# this checkout (dev), never from the PR.
-_spec = importlib.util.spec_from_file_location("tlwu_owners", Path(__file__).with_name("owners.py"))
-owners = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(owners)
+# this checkout (dev), never from the PR. Loaded on first use (#1954): pr-format.yml runs from main
+# (pull_request_target) with a sparse checkout of dev that may lack owners.py; it only needs the regexes here.
+# A missing owners.py still fails closed: is_protected() raises.
+_owners = None
+
+
+def _load_owners():
+    global _owners
+    if _owners is None:
+        spec = importlib.util.spec_from_file_location("tlwu_owners", Path(__file__).with_name("owners.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _owners = mod
+    return _owners
 
 HEAD_RE = re.compile(r"^(?:fix/(\d+)(?:-r\d+)?|feat/(\d+))$")
 LINK_RE = re.compile(r"\b(?:Closes|Refs)\s+#(\d+)\b", re.I)
@@ -69,7 +79,7 @@ BOT_BLOCK_RE = re.compile(r"<!-- This is an auto-generated comment.*?<!-- end of
 
 def is_protected(path: str) -> bool:
     """Section 14 protected paths plus the g4 sensitive paths, per the OWNERS chain (#1918); tests/ never count."""
-    return owners.is_protected(path)
+    return _load_owners().is_protected(path)
 
 
 def trusted_issue(issue: dict) -> bool:
@@ -266,9 +276,19 @@ def evaluate(pr: dict, files: list[dict], checks: list[dict], issue: dict | None
 
 # ---------------------------------------------------------------- I/O (gh only)
 
+class GhError(subprocess.CalledProcessError):
+    """#1947: a failed gh call; str() carries gh's own stderr (still a CalledProcessError for existing handlers)."""
+
+    def __str__(self) -> str:
+        err = (self.stderr or "").strip()
+        return f"Command [gh api {self.cmd[2] if len(self.cmd) > 2 else ''} ...] returned {self.returncode}: {err}"
+
+
 def _gh(path: str, *args: str):
-    out = subprocess.run(["gh", "api", path, *args], check=True, capture_output=True, text=True).stdout
-    return json.loads(out) if out.strip() else None
+    r = subprocess.run(["gh", "api", path, *args], capture_output=True, text=True)
+    if r.returncode:
+        raise GhError(r.returncode, r.args, r.stdout, r.stderr)
+    return json.loads(r.stdout) if r.stdout.strip() else None
 
 
 def _gh_list(path: str) -> list:
@@ -426,16 +446,32 @@ def resolve_minor(num: int, threads: list[dict]) -> None:
     minor = [t for t in threads if minor_bot_thread(t)]
     if not minor:
         return
-    log = minor_log_issue()
-    lines = "\n".join(_finding_line(t) for t in minor)
-    _gh(f"repos/{REPO}/issues/{log}/comments", "-X", "POST", "-f",
-        f"body=#{num}: {len(minor)} Minor review-bot finding(s), resolved by merge-gate, not fixed in the PR.\n{lines}")
+    log = None
+    try:  # #1947: a failed log never blocks the merge
+        log = minor_log_issue()
+        lines = "\n".join(_finding_line(t) for t in minor)
+        _gh(f"repos/{REPO}/issues/{log}/comments", "-X", "POST", "-f",
+            f"body=#{num}: {len(minor)} Minor review-bot finding(s), resolved by merge-gate, not fixed in the PR.\n{lines}")
+    except (subprocess.CalledProcessError, RuntimeError, KeyError) as e:
+        print(f"#{num} warn: minor log failed: {getattr(e, 'stderr', None) or e}", file=sys.stderr)
+    where = f"logged on #{log}." if log else "log failed."
     for t in minor:
         if t.get("comment_id"):
             _gh(f"repos/{REPO}/pulls/{num}/comments/{t['comment_id']}/replies", "-X", "POST", "-f",
-                f"body=merge-gate: Minor finding, not fixed in this PR (rules section 3 one review round); logged on #{log}.")
+                f"body=merge-gate: Minor finding, not fixed in this PR (rules section 3 one review round); {where}")
         _gh("graphql", "-f", "query=mutation($t:ID!){resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}",
             "-f", f"t={t['id']}")
+
+
+WORKFLOW_HOLD = "changes .github/workflows; merge-gate token lacks workflow scope, an agent merges it"
+
+
+def hold_workflow_scope(num: int, notes=()) -> None:
+    """#1948: a 403 'without workflow scope' is a hold, not an error; the reason is posted once."""
+    print(f"#{num} hold: {WORKFLOW_HOLD}")
+    marker = "merge-gate: hold:"
+    if not any((n.get("body") or "").startswith(marker) for n in notes):
+        _gh(f"repos/{REPO}/issues/{num}/comments", "-X", "POST", "-f", f"body={marker} {WORKFLOW_HOLD}")
 
 
 def apply(num: int, pr: dict, action: str, reason: str, notes: list[dict] = (), threads=()) -> None:
@@ -448,8 +484,14 @@ def apply(num: int, pr: dict, action: str, reason: str, notes: list[dict] = (), 
             raise RuntimeError("legacy release freeze started; not merged")
         if not isinstance(threads, int):
             resolve_minor(num, list(threads))
-        subprocess.run(["gh", "api", "-X", "PUT", f"repos/{REPO}/pulls/{num}/merge", "-f", "merge_method=squash",
-                        "-f", f"sha={pr['head']['sha']}"], check=True)
+        r = subprocess.run(["gh", "api", "-X", "PUT", f"repos/{REPO}/pulls/{num}/merge", "-f", "merge_method=squash",
+                            "-f", f"sha={pr['head']['sha']}"], capture_output=True, text=True)
+        if r.returncode:
+            err = (r.stderr or "") + (r.stdout or "")
+            if "403" in err and "workflow" in err and "scope" in err:  # #1948: the token cannot write workflow files
+                hold_workflow_scope(num, notes)
+                return
+            raise GhError(r.returncode, r.args, r.stdout, r.stderr)
     elif action in ("needs-opus", "needs-ai"):
         label = NEEDS_OPUS if action == "needs-opus" else NEEDS_AI
         marker = f"merge-gate: {label}:"

@@ -6,6 +6,12 @@ on:
     branches: [main, dev]
   workflow_dispatch:   # #958: hotfix.yml dispatches `test` on its back-merge PR (opened by github.token, no pull_request run)
 
+# #1920: a new push to a PR cancels that PR's older, still-running ci run (one group per PR number). Pushes and
+# dispatches get a group of their own (the run id), so a dev or main push run is never cancelled or replaced.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # #1857 part 3: the suite runs ONCE, split over 4 parallel `pytest` jobs (tests/conftest.py TLWU_SHARD), each in
 # a network-less namespace under xvfb; `checks` holds the other gates. The required check `test` is the last job:
 # it passes only when `checks` and every shard passed.

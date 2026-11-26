@@ -13,8 +13,13 @@ ROOT = Path(__file__).resolve().parent.parent
 TEST = "tests/test_gui.py::test_start_shows_listening_in_main_window_and_bar_stays_hidden"
 
 
+# Parent-run settings the child pytest must not inherit: a CI shard filter would deselect the child's target (#1959).
+_PARENT_ONLY = ("TLWU_SHARD",)
+
+
 def _run(require):
-    env = {k: v for k, v in os.environ.items() if k not in ("DISPLAY", "WAYLAND_DISPLAY", "TLWU_REQUIRE_DISPLAY")}
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("DISPLAY", "WAYLAND_DISPLAY", "TLWU_REQUIRE_DISPLAY") + _PARENT_ONLY}
     if require:
         env["TLWU_REQUIRE_DISPLAY"] = "1"
     return subprocess.run(
@@ -39,7 +44,7 @@ def _run_tmp(tmp_path, body, require):
     """Run a throwaway test file with this repo's conftest (the hooks under test) in a subprocess."""
     (tmp_path / "conftest.py").write_text((ROOT / "tests" / "conftest.py").read_text("utf-8"), "utf-8")
     (tmp_path / "test_tmp.py").write_text(body, "utf-8")
-    env = {k: v for k, v in os.environ.items() if k != "TLWU_REQUIRE_DISPLAY"}
+    env = {k: v for k, v in os.environ.items() if k not in ("TLWU_REQUIRE_DISPLAY",) + _PARENT_ONLY}
     if require:
         env["TLWU_REQUIRE_DISPLAY"] = "1"
     return subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(tmp_path)],
@@ -66,3 +71,12 @@ def test_modal_dialog_fails_the_test_at_once_instead_of_blocking(tmp_path):
     r = _run_tmp(tmp_path, DIALOG, False)  # no display needed: the guard answers before Tk opens a window
     assert "unexpected modal dialog" in r.stdout and "messagebox.askyesno" in r.stdout, r.stdout + r.stderr
     assert "2 passed, 1 error" in r.stdout, r.stdout  # test_dialog errors at teardown, test_patched is fine
+
+
+@pytest.mark.parametrize("shard", ["1/4", "2/4", "3/4", "4/4"])
+def test_child_pytest_ignores_parent_shard(monkeypatch, shard):
+    """#1959: the child must run its target whatever TLWU_SHARD the parent CI job has (it printed '2 deselected')."""
+    monkeypatch.setenv("TLWU_SHARD", shard)
+    r = _run(False)
+    assert "deselected" not in r.stdout, r.stdout + r.stderr
+    assert "skipped" in r.stdout, r.stdout

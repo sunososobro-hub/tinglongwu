@@ -45,6 +45,29 @@ def test_other_checks_red_do_not_block_on_dev():  # section 17: only `test` gate
     assert run(p=pr(mergeable_state="unstable"), checks=checks)[0] == "merge"
 
 
+RED = "failure"
+
+
+def _c(name, conclusion="success"):
+    return {"name": name, "status": "completed", "conclusion": conclusion}
+
+
+def test_mergeable_states_1984():
+    """#1984: `unstable` with only non-required checks red merges; a red required check, `dirty`, `behind` and
+    `blocked` do not (PR #1826 sat 21 h on a red low-end-cpu check)."""
+    side_red = TEST_OK + [_c("low-end-cpu", RED), _c("e2e", RED)]
+    assert run(p=pr(mergeable_state="unstable"), checks=side_red)[0] == "merge"
+    assert run(p=pr(mergeable_state="unstable"), checks=[_c("test", RED), _c("low-end-cpu", RED)])[0] == "hold"
+    evalf = [{"filename": "eval/run.py", "status": "modified"}]  # mini-eval is required for eval paths
+    assert run(p=pr(mergeable_state="unstable"), files=evalf, checks=TEST_OK + [_c("mini-eval", RED)])[0] == "hold"
+    assert run(p=pr(mergeable_state="unstable"), files=evalf, checks=TEST_OK + [_c("mini-eval")])[0] == "merge"
+    mob = [{"filename": "mobile/lib/main.dart", "status": "modified"}]  # mobile-apk is required for mobile/**
+    assert run(p=pr(mergeable_state="unstable"), files=mob, checks=TEST_OK + [_c("mobile-apk", RED)])[0] == "hold"
+    assert run(p=pr(mergeable_state="dirty"), checks=side_red)[0] == "needs-ai"
+    for state in ("behind", "blocked"):
+        assert run(p=pr(mergeable_state=state), checks=side_red)[0] == "wait"
+
+
 def test_test_pending_or_missing_waits_and_red_holds():
     assert run(checks=[])[0] == "wait"
     assert run(checks=[{"name": "test", "status": "in_progress", "conclusion": None}])[0] == "wait"
@@ -345,7 +368,7 @@ def test_apply_resolves_and_logs_minor_before_merge(monkeypatch):
     ran = []
     monkeypatch.setattr(mg, "_gh", fake_gh)
     monkeypatch.setattr(mg, "legacy_freeze", lambda: False)
-    monkeypatch.setattr(mg.subprocess, "run", lambda cmd, **kw: ran.append(cmd))
+    monkeypatch.setattr(mg.subprocess, "run", lambda cmd, **kw: (ran.append(cmd), mg.subprocess.CompletedProcess(cmd, 0, "", ""))[1])
     mg.apply(7, p, "merge", "ok", [], [_thread("Minor", cid=11), _thread("Major", tid="T2", cid=12)])
     paths = [c[0] for c in calls]
     assert f"repos/{mg.REPO}/issues/55/comments" in paths  # logged on the rolling issue
