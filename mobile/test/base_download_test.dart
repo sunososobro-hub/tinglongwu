@@ -9,6 +9,7 @@ import 'package:mobile/logic/first_use_plan.dart';
 import 'package:mobile/logic/model_manifest.dart';
 import 'package:mobile/services/base_download.dart';
 import 'package:mobile/services/model_importer.dart';
+import 'package:mobile/services/model_paths.dart';
 import 'package:mobile/ui/message_screen.dart';
 
 // #1863: a fresh install with no models downloads them in the app instead of a "Models missing"
@@ -59,6 +60,7 @@ class _Fake implements BaseModelSource {
   final packZip = <String, _Got>{}; // pack id -> (size, sha256) of its first file
   final packUrls = <String>[];
   final packsDone = <String>{}; // ids of installed packs
+  final silentlyIncomplete = <String>{}; // pack ids whose zip omits a file but reports no problem
 
   @override
   Future<String> downloadPack(VoicePack p, void Function(int done, int total) onProgress) async {
@@ -73,7 +75,7 @@ class _Fake implements BaseModelSource {
     final got = packZip[p.id] ?? (p.files.first.size, p.files.first.sha256);
     final e = p.files.first;
     if (got.$1 == e.size && got.$2 == e.sha256) {
-      packsDone.add(p.id);
+      if (!silentlyIncomplete.contains(p.id)) packsDone.add(p.id);
       r.imported.add(e.path);
     } else {
       r.problems.add('${e.path}: sha256 mismatch');
@@ -238,6 +240,25 @@ void main() {
       f.packUrls.clear();
       expect(await d.run(), isTrue);
       expect(f.packUrls, ['https://example.invalid/asr-ru.zip'], reason: 'voice-en is already installed');
+    });
+  });
+
+  test('ModelPaths picks the right-size pack copy over a wrong-size local file (#1980)', () {
+    final root = Directory.systemTemp.createTempSync('mp1980');
+    addTearDown(() => root.deleteSync(recursive: true));
+    Directory('${root.path}/files/models').createSync(recursive: true);
+    Directory('${root.path}/pack').createSync();
+    File('${root.path}/files/models/a.bin').writeAsBytesSync([1, 2, 3]);
+    File('${root.path}/pack/a.bin').writeAsBytesSync([1, 2, 3, 4, 5]);
+    final mp = ModelPaths('${root.path}/files', packDirs: ['${root.path}/pack'], sizes: {'a.bin': 5});
+    expect(mp.path('a.bin'), '${root.path}/pack/a.bin');
+
+    test('a pack zip that omits a declared file fails run() with a zh-TW error (#1980)', () async {
+      final f = _Fake(_good())..silentlyIncomplete.add('asr-ru');
+      final d = BaseModelDownload(f, url: DeviceBaseModelSource.bundleUrl, extraPacks: packs);
+      expect(await d.run(), isFalse);
+      expect(d.state, BaseDlState.failed);
+      expect(d.error, contains('不完整'));
     });
   });
 

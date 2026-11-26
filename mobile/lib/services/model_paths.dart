@@ -80,18 +80,25 @@ class ModelPaths {
 
   String get modelsDir => '$filesDir/models';
 
-  /// Where the file at [rel] (manifest path) is read from: the models dir when the file is there,
+  /// Where the file at [rel] (manifest path) is read from: the models dir when the file is there
+  /// with the manifest size,
   /// else a pack folder with a file of the manifest size, else the models dir (= missing).
   String path(String rel) {
     final local = '$modelsDir/$rel';
-    if (File(local).existsSync()) return local;
+    if (_sizeOk(File(local), rel)) return local; // same rule as ModelImporter.presentFiles (#1980)
     for (final d in packDirs) {
       final f = File('$d/$rel');
-      try {
-        if (f.existsSync() && (sizes[rel] == null || f.lengthSync() == sizes[rel])) return f.path;
-      } catch (_) {}
+      if (_sizeOk(f, rel)) return f.path;
     }
     return local;
+  }
+
+  bool _sizeOk(File f, String rel) {
+    try {
+      return f.existsSync() && (sizes[rel] == null || f.lengthSync() == sizes[rel]);
+    } catch (_) {
+      return false;
+    }
   }
 
   String get vadPath => path(vadFileName);
