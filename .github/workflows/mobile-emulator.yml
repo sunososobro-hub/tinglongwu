@@ -108,8 +108,15 @@ jobs:
       - name: Start the emulator
         run: |
           set -euo pipefail
+          # Run 45787449295: avdmanager put the AVD outside ~/.android/avd (runner image default), so the
+          # config.ini append failed. Pin one AVD home for avdmanager and the emulator (both honour it).
+          export ANDROID_AVD_HOME="$HOME/.android/avd"; mkdir -p "$ANDROID_AVD_HOME"
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n e2e -k "$SYS_IMAGE" -d pixel_6 --force
-          printf 'hw.ramSize=6144\nhw.cpu.ncore=4\ndisk.dataPartition.size=12G\n' >> ~/.android/avd/e2e.avd/config.ini
+          CFG="$ANDROID_AVD_HOME/e2e.avd/config.ini"
+          if [ ! -f "$CFG" ]; then
+            echo "::error::avdmanager did not create $CFG"; find "$HOME" -name 'e2e.avd' -maxdepth 4 2>/dev/null || true; exit 1
+          fi
+          printf 'hw.ramSize=6144\nhw.cpu.ncore=4\ndisk.dataPartition.size=12G\n' >> "$CFG"
           nohup "$ANDROID_HOME/emulator/emulator" -avd e2e -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect \
             -camera-back none -camera-front none > "$RUNNER_TEMP/emulator.log" 2>&1 &
           ADB="$ANDROID_HOME/platform-tools/adb"
