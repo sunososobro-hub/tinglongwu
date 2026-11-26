@@ -216,17 +216,26 @@ jobs:
           TLWU_X86_64: "1"
         run: |
           set -euo pipefail
-          # Run 45906708811: the app's files dir no longer held the pushed zips here (an earlier `flutter test` run
-          # leaves a fresh app behind), so install, launch once and push the inputs again, as the install step does.
+          # Runs 45906708811 / 45908554390: inputs pushed before `flutter test` were gone once it had installed the
+          # app. So the test asks for them: it writes e2e/draft_ready, this loop pushes the inputs and writes draft_go.
           ADB="$ANDROID_HOME/platform-tools/adb"
-          "$ADB" install -r -t build/app/outputs/flutter-apk/app-debug.apk
-          "$ADB" shell am start -W -n "$PKG/$ACTIVITY"
-          sleep 20
-          "$ADB" shell am force-stop "$PKG"
           D="/sdcard/Android/data/$PKG/files/e2e"
-          "$ADB" shell mkdir -p "$D"
-          "$ADB" push "$RUNNER_TEMP"/e2e/* "$D/"
-          flutter test integration_test/draft_test.dart -d emulator-5554 2>&1 | tee "$RUNNER_TEMP/draft.log"
+          (
+            for _ in $(seq 1 1200); do
+              if "$ADB" shell ls "$D/draft_ready" > /dev/null 2>&1; then
+                "$ADB" shell rm -f "$D/draft_ready"
+                "$ADB" push "$RUNNER_TEMP"/e2e/* "$D/" && "$ADB" shell touch "$D/draft_go"
+                exit 0
+              fi
+              sleep 1
+            done
+            echo "::warning::draft_test never wrote $D/draft_ready"
+          ) &
+          FEED=$!
+          rc=0
+          flutter test integration_test/draft_test.dart -d emulator-5554 2>&1 | tee "$RUNNER_TEMP/draft.log" || rc=$?
+          kill "$FEED" 2> /dev/null || true
+          exit $rc
       - name: Job summary (speakLat, report only)
         if: always()
         run: |

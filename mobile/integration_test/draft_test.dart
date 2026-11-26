@@ -103,6 +103,17 @@ void main() {
   testWidgets('draft: grey draft before the final, final replaces it, latency on vs off', (tester) async {
     final paths = await ModelPaths.resolve();
     final e2e = '${paths.filesDir}/e2e';
+    // Runs 45906708811 / 45908554390: inputs pushed before `flutter test` were gone once it had installed the
+    // app, so the host pushes them only after this test asks (draft_ready -> push -> draft_go), like mic_test.
+    Directory(e2e).createSync(recursive: true);
+    final go = File('$e2e/draft_go');
+    if (go.existsSync()) go.deleteSync();
+    File('$e2e/draft_ready').writeAsStringSync('1');
+    final asked = Stopwatch()..start();
+    while (!go.existsSync()) {
+      if (asked.elapsed > const Duration(minutes: 5)) fail('no $e2e/draft_go from the workflow within 5 min');
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
     final imp = ModelImporter(await ModelImporter.loadManifest(), paths.modelsDir);
     await importZip(imp, File('$e2e/tlwu-mobile-models.zip'));
     await importZip(imp, File('$e2e/tlwu-voice-en.zip'));
