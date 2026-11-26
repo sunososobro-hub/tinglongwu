@@ -58,6 +58,12 @@ class TtsWorker {
     _replies.cancel();
   }
 
+  /// Folder of the jieba files of a melo voice (the parent of `dict/jieba.dict.utf8`).
+  static String meloDictDir(Map<String, String> files) {
+    final p = files['${TtsVoiceLayout.meloDictDir}/${TtsVoiceLayout.meloDictFiles.first}']!;
+    return p.substring(0, p.lastIndexOf('/'));
+  }
+
   static void _entry(List<Object> args) {
     final out = args[0] as SendPort;
     final engine = args[1] as String;
@@ -67,7 +73,9 @@ class TtsWorker {
     try {
       sherpa.initBindings();
       final threads = args[4] as int;
+      final isMelo = engine == TtsVoiceLayout.melo;
       tts = sherpa.OfflineTts(sherpa.OfflineTtsConfig(
+        ruleFsts: isMelo ? TtsVoiceLayout.meloFsts.map((n) => f[n]!).join(',') : '',
         model: engine == TtsVoiceLayout.supertonic
             ? sherpa.OfflineTtsModelConfig(
                 supertonic: sherpa.OfflineTtsSupertonicModelConfig(
@@ -88,6 +96,7 @@ class TtsWorker {
                   model: f['model.onnx']!,
                   tokens: f['tokens.txt']!,
                   lexicon: f['lexicon.txt']!,
+                  dictDir: isMelo ? meloDictDir(f) : '',
                 ),
                 numThreads: threads,
                 provider: 'cpu',

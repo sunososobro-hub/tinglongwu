@@ -8,6 +8,8 @@ import 'dart:typed_data';
 /// Offline voice for one language, one of two sherpa-onnx engines:
 ///  - `vits` (Piper-style VITS, e.g. the English vits-ljs): model.onnx + tokens.txt + lexicon.txt.
 ///    sherpa-onnx 2.x dropped espeak-ng, so the pack must ship `lexicon.txt` (word -> phonemes).
+///  - `melo` (MeloTTS Chinese + English, #1951): a VITS model that also needs the rule FSTs
+///    (numbers, dates, phone numbers) and the jieba dictionary to read Chinese text.
 ///  - `supertonic` (Supertonic 3, 31 languages incl. Russian, works on plain text, no lexicon):
 ///    four int8 onnx parts + tts.json + unicode_indexer.bin + voice.bin.
 ///
@@ -18,12 +20,35 @@ import 'dart:typed_data';
 class TtsVoiceLayout {
   static const vits = 'vits';
   static const supertonic = 'supertonic';
+  static const melo = 'melo';
 
-  /// Engines in the order a folder is probed.
-  static const engines = [vits, supertonic];
+  /// Engines in the order a folder is probed (melo before vits: it holds the three VITS files too).
+  static const engines = [melo, vits, supertonic];
+
+  /// The rule FSTs of a melo voice (comma-joined for sherpa-onnx `ruleFsts`) and its jieba dir.
+  static const meloFsts = ['date.fst', 'new_heteronym.fst', 'number.fst', 'phone.fst'];
+  static const meloDictDir = 'dict';
+  static const meloDictFiles = [
+    'jieba.dict.utf8',
+    'hmm_model.utf8',
+    'user.dict.utf8',
+    'idf.utf8',
+    'stop_words.utf8',
+  ];
 
   static const _files = {
     vits: ['model.onnx', 'tokens.txt', 'lexicon.txt'],
+    melo: [
+      'model.onnx',
+      'tokens.txt',
+      'lexicon.txt',
+      ...meloFsts,
+      'dict/jieba.dict.utf8',
+      'dict/hmm_model.utf8',
+      'dict/user.dict.utf8',
+      'dict/idf.utf8',
+      'dict/stop_words.utf8',
+    ],
     supertonic: [
       'duration_predictor.int8.onnx',
       'text_encoder.int8.onnx',
@@ -70,6 +95,14 @@ class TtsVoicePaths {
     required String Function(String rel) resolve,
     required bool Function(String path) exists,
   }) {
+    // A folder holding some Melo-only file (rule FST or jieba dict) but not the whole Melo voice is
+    // a half-installed Melo pack: plain VITS would load it without ruleFsts / dictDir (#1967).
+    final vitsNames = TtsVoiceLayout.files(TtsVoiceLayout.vits).toSet();
+    final meloOnly = [
+      for (final r in TtsVoiceLayout.rel(lang, engine: TtsVoiceLayout.melo))
+        if (!vitsNames.contains(r.substring(TtsVoiceLayout.dir(lang).length + 1))) resolve(r)
+    ];
+    if (meloOnly.any(exists) && !meloOnly.every(exists)) return null;
     for (final engine in TtsVoiceLayout.engines) {
       final names = TtsVoiceLayout.files(engine);
       final p = [for (final r in TtsVoiceLayout.rel(lang, engine: engine)) resolve(r)];

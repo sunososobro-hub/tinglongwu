@@ -64,8 +64,9 @@ class VoicePack {
   /// extra-language recognizer (sherpa-onnx transducer).
   static const vitsKind = TtsVoiceLayout.vits;
   static const supertonicKind = TtsVoiceLayout.supertonic;
+  static const meloKind = TtsVoiceLayout.melo;
   static const asrKind = 'asr';
-  static const kinds = {vitsKind, supertonicKind, asrKind};
+  static const kinds = {vitsKind, supertonicKind, meloKind, asrKind};
 
   final String id;
   final String kind;

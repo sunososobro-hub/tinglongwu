@@ -120,7 +120,21 @@ def _on():
 def test_dispatch_input_whisper_is_a_choice_defaulting_to_small():
     inp = _on()["workflow_dispatch"]["inputs"]["whisper"]
     assert inp["type"] == "choice" and inp["default"] == "small"
-    assert set(inp["options"]) == {"tiny", "base", "small"}
+    assert set(inp["options"]) == {"tiny", "base", "small", "large-v3-turbo"}
+
+
+@pytest.mark.parametrize("size", _on()["workflow_dispatch"]["inputs"]["whisper"]["options"])
+def test_every_dispatch_size_is_accepted_by_tlwu_setup(size):
+    """#1385: the mini-eval runs `tlwu-setup --whisper <size>` first; a size it rejects would fail the dispatch.
+    argparse checks --whisper before --help: exit 0 = accepted, 2 = invalid choice."""
+    from tinglongwu_setup import downloader
+
+    with pytest.raises(SystemExit) as e:
+        downloader.main(["--whisper", size, "--help"])
+    assert e.value.code == 0
+    with pytest.raises(SystemExit) as bad:
+        downloader.main(["--whisper", size + "-x", "--help"])
+    assert bad.value.code == 2
 
 
 def test_pr_runs_resolve_to_small_and_dispatch_uses_the_input():

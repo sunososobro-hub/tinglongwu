@@ -2,7 +2,9 @@
 """#1567: the phone app may use the network only for user-tapped pack downloads.
 
 Checks `mobile/`:
-  * the main AndroidManifest declares INTERNET (no `tools:node="remove"`) and no other network permission;
+  * the main AndroidManifest declares INTERNET (no `tools:node="remove"`) and no other network
+    permission except ACCESS_NETWORK_STATE (#1864: read-only Wi-Fi vs mobile data check, so the
+    first-run model download starts by itself only on an unmetered network);
   * network APIs (HTTP/socket clients) appear only in the downloader files (ALLOWED_FILES).
 
 Usage: python scripts/check_mobile_network.py [--mobile-dir mobile]
@@ -19,8 +21,9 @@ ALLOWED_FILES = {
     "android/app/src/main/kotlin/com/tinglongwu/mobile/PackDownloader.kt",
     "lib/services/pack_downloader.dart",
 }
+# ACCESS_NETWORK_STATE is allowed (#1864): it only reads whether the network is metered.
 OTHER_NETWORK_PERMISSIONS = (
-    "ACCESS_NETWORK_STATE", "CHANGE_NETWORK_STATE", "ACCESS_WIFI_STATE",
+    "CHANGE_NETWORK_STATE", "ACCESS_WIFI_STATE",
     "CHANGE_WIFI_STATE", "NEARBY_WIFI_DEVICES", "CHANGE_WIFI_MULTICAST_STATE",
 )
 NETWORK_API = re.compile(
@@ -42,7 +45,7 @@ def manifest_problems(text: str) -> list[str]:
             out.append("AndroidManifest.xml removes INTERNET (tools:node)")
     for name in OTHER_NETWORK_PERMISSIONS:
         if any(f"android.permission.{name}" in p and 'tools:node="remove"' not in p for p in perms):
-            out.append(f"AndroidManifest.xml requests {name}; INTERNET must be the only network permission")
+            out.append(f"AndroidManifest.xml requests {name}; only INTERNET and ACCESS_NETWORK_STATE are allowed")
     return out
 
 

@@ -14,7 +14,7 @@ import json
 import subprocess
 import sys
 
-EXPECTED = ("tlwu-voice-en.zip", "tlwu-voice-ru.zip", "tlwu-mobile-lang-ru.zip")
+EXPECTED = ("tlwu-voice-en.zip", "tlwu-voice-ru.zip", "tlwu-voice-zh.zip", "tlwu-mobile-lang-ru.zip")
 
 
 def asset_names(data) -> set[str]:

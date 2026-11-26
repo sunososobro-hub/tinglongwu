@@ -72,6 +72,16 @@ class _RootState extends State<Root> {
     await _pushImporter(PackInstallScreen(modelsDir: dir, packs: packs));
   }
 
+  /// #1864: on Wi-Fi the base model download starts by itself; on mobile data the screen asks.
+  BaseModelDownload _newBaseDl(String dir) {
+    final dl =
+        BaseModelDownload(DeviceBaseModelSource(dir), url: DeviceBaseModelSource.bundleUrl);
+    dl.autoStart(DeviceNetworkProbe()).then((ok) {
+      if (ok && mounted) _restart();
+    });
+    return dl;
+  }
+
   /// The models are in: a fresh pipeline loads them and opens the listening screen.
   void _restart() {
     final old = pipeline;
@@ -103,8 +113,7 @@ class _RootState extends State<Root> {
         switch (pipeline.stage) {
           case Stage.missingModels:
             final dir = pipeline.paths!.modelsDir;
-            final dl = _baseDl ??= BaseModelDownload(DeviceBaseModelSource(dir),
-                url: DeviceBaseModelSource.bundleUrl);
+            final dl = _baseDl ??= _newBaseDl(dir);
             return MissingModelsScreen(
                 download: dl,
                 modelsDir: dir,
