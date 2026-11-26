@@ -53,6 +53,9 @@ class _RootState extends State<Root> {
   List<VoicePack> _optionalPacks = const [];
   int _baseBytes = 0;
 
+  /// #1998: true until the manifest has been read, so the first-use button is not offered early.
+  bool _manifestLoading = true;
+
   @override
   void initState() {
     super.initState();
@@ -89,10 +92,14 @@ class _RootState extends State<Root> {
           setState(() {
             _optionalPacks = packs;
             _baseBytes = m.files.fold(0, (a, f) => a + f.size);
+            _manifestLoading = false;
           });
+          // #1998: no auto start here, but the screen still needs to know about mobile data.
+          await dl.probeNetwork(DeviceNetworkProbe());
           return;
         }
       } catch (_) {}
+      if (mounted) setState(() => _manifestLoading = false);
       final ok = await dl.autoStart(DeviceNetworkProbe());
       if (ok && mounted) _restart();
     }();
@@ -138,6 +145,7 @@ class _RootState extends State<Root> {
                 logPath: pipeline.logPath,
                 packs: _optionalPacks,
                 baseBytes: _baseBytes,
+                manifestLoading: _manifestLoading,
                 onImport: _openImport,
                 onDone: _restart);
           case Stage.error:

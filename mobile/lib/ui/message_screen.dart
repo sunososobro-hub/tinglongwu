@@ -50,6 +50,7 @@ class MissingModelsScreen extends StatefulWidget {
     this.logPath,
     this.packs = const [],
     this.baseBytes = 0,
+    this.manifestLoading = false,
   });
   final BaseModelDownload download;
   final String modelsDir;
@@ -62,6 +63,10 @@ class MissingModelsScreen extends StatefulWidget {
   /// is hidden and the screen is the plain one.
   final List<VoicePack> packs;
   final int baseBytes;
+
+  /// #1998: the manifest is still being read, so the packs are not known yet: the start button is
+  /// disabled (a tap would download the base only).
+  final bool manifestLoading;
 
   @override
   State<MissingModelsScreen> createState() => _MissingModelsScreenState();
@@ -186,8 +191,8 @@ class _MissingModelsScreenState extends State<MissingModelsScreen> {
                 if (d.onMobileData && d.error == null) ...[
                   Text(
                       _hasChoice
-                          ? '目前是行動數據，所以還沒開始下載。連上 Wi-Fi 後按下方的開始按鈕下載。'
-                          : '目前是行動數據，所以還沒開始下載。連上 Wi-Fi 後重開 App 會自動下載。',
+                          ? '目前是行動數據，所以還沒開始下載。連上 Wi-Fi 後按下面的「用行動數據下載」。'
+                          : '目前是行動數據，所以還沒開始下載。連上 Wi-Fi 後重開 App 會自動下載，或按下面的「用行動數據下載」。',
                       key: const Key('mobileDataHint'),
                       style: _t),
                   const SizedBox(height: 12),
@@ -203,7 +208,7 @@ class _MissingModelsScreenState extends State<MissingModelsScreen> {
                                   ? '開始下載（$size）'
                                   : '開始下載',
                       style: const TextStyle(fontSize: 20)),
-                  onPressed: _start,
+                  onPressed: widget.manifestLoading ? null : _start,
                 ),
               ],
               const SizedBox(height: 24),

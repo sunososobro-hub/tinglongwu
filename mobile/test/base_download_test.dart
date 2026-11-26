@@ -391,7 +391,7 @@ void main() {
       await t.pump();
       final hint = t.widget<Text>(find.byKey(const Key('mobileDataHint'))).data!;
       expect(hint.contains('重開 App 會自動下載'), !withPacks);
-      if (withPacks) expect(hint.contains('開始按鈕'), isTrue);
+      if (withPacks) expect(hint.contains('用行動數據下載'), isTrue);
     });
   }
 
@@ -527,6 +527,47 @@ void main() {
               onDone: () {})));
       expect(find.text('開始下載'), findsOneWidget);
       expect(find.text('看影片／聽別人說（只要字幕）'), findsNothing);
+    });
+
+    // #1998: the manifest is read asynchronously; until then the button must not start a base-only run.
+    testWidgets('button is disabled while the manifest is loading, enabled after', (t) async {
+      final d = _dl(_Fake(_good()));
+      Widget screen({required bool loading}) => MaterialApp(
+          home: MissingModelsScreen(
+              download: d,
+              modelsDir: '/data/models',
+              missingFiles: const [],
+              packs: loading ? const [] : packs,
+              baseBytes: loading ? 0 : base,
+              manifestLoading: loading,
+              onImport: () {},
+              onDone: () {}));
+      await t.pumpWidget(screen(loading: true));
+      expect(t.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNull);
+      await t.pumpWidget(screen(loading: false));
+      expect(t.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNotNull);
+    });
+
+    testWidgets('packs present + metered probe: label names mobile data, nothing is fetched', (t) async {
+      final (d, f) = await pump(t);
+      await d.probeNetwork(_Net(NetKind.metered));
+      await t.pump();
+      expect(d.onMobileData, isTrue);
+      expect(f.urls, isEmpty, reason: 'probing never starts a download');
+      expect(find.widgetWithText(FilledButton, '用行動數據下載（約 1.30 GB）'), findsOneWidget);
+      expect(find.text('開始下載（1.30 GB）'), findsNothing);
+      expect(find.textContaining('目前是行動數據'), findsOneWidget);
+      expect(find.textContaining('「用行動數據下載」'), findsOneWidget, reason: 'the hint names the button');
+    });
+
+    testWidgets('packs present + unmetered probe: no mobile-data hint', (t) async {
+      final (d, f) = await pump(t);
+      await d.probeNetwork(_Net(NetKind.unmetered));
+      await t.pump();
+      expect(d.onMobileData, isFalse);
+      expect(f.urls, isEmpty, reason: 'probing never starts a download');
+      expect(find.textContaining('目前是行動數據'), findsNothing);
+      expect(find.textContaining('用行動數據下載'), findsNothing);
     });
   });
 }
