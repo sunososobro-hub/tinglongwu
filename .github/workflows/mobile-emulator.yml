@@ -76,13 +76,28 @@ jobs:
           cache: true
       - run: flutter pub get
       - name: Debug APK with x86_64 (#1511)
-        run: TLWU_X86_64=1 flutter build apk --debug --target-platform android-arm64,android-x64
+        # One retry: Maven Central answers 429 Too Many Requests now and then (run 45765117770).
+        run: |
+          for i in 1 2; do
+            TLWU_X86_64=1 flutter build apk --debug --target-platform android-arm64,android-x64 && exit 0
+            echo "flutter build try $i failed"; [ "$i" = 2 ] || sleep 60
+          done
+          exit 1
       - name: Test inputs (models zip + voice-en from mobile-latest, zh clip)
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # ffmpeg is not on the ubuntu-24.04 runner image (run 45778290378: "ffmpeg: command not found").
+          if ! command -v ffmpeg > /dev/null; then
+            ok=0
+            for i in 1 2 3; do
+              sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends ffmpeg && { ok=1; break; }
+              echo "apt try $i failed"; sleep 15
+            done
+            [ "$ok" = 1 ]
+          fi
           IN="$RUNNER_TEMP/e2e"; mkdir -p "$IN"
           gh release download mobile-latest -D "$IN" -p tlwu-mobile-models.zip -p tlwu-voice-en.zip
           curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/sv.tar.bz2" "$SV_URL"
@@ -129,12 +144,13 @@ jobs:
           ADB="$ANDROID_HOME/platform-tools/adb"
           {
             echo "### mobile-emulator: two-way conversation mode (#1512)"
-            LAT=$(grep -o 'TLWU_SPEAKLAT=[^ ]*' "$RUNNER_TEMP/test.log" 2>/dev/null | tail -1 | cut -d= -f2)
+            # `|| true`: an earlier step may have failed before test.log / the app log exist (run 45765117770).
+            LAT=$(grep -o 'TLWU_SPEAKLAT=[^ ]*' "$RUNNER_TEMP/test.log" 2>/dev/null | tail -1 | cut -d= -f2 || true)
             echo "- speakLat (end of zh speech -> start of en audio, x86_64 emulator, report only): **${LAT:-n/a} ms**"
-            grep -o 'TLWU_SPEAKLAT=.*' "$RUNNER_TEMP/test.log" 2>/dev/null | tail -1 | sed 's/^/- /'
+            grep -o 'TLWU_SPEAKLAT=.*' "$RUNNER_TEMP/test.log" 2>/dev/null | tail -1 | sed 's/^/- /' || true
             echo; echo '```'
             "$ADB" shell cat "/sdcard/Android/data/$PKG/files/logs/tlwu.log" 2>/dev/null \
-              | grep -E 'ready in|ASR final|TTS \[|tts:|LLM|start failed|models missing' | tail -40
+              | grep -E 'ready in|ASR final|TTS \[|tts:|LLM|start failed|models missing' | tail -40 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Emulator log on failure
