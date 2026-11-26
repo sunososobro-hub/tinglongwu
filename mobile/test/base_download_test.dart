@@ -519,8 +519,20 @@ void main() {
       await t.pump();
       expect(d.onMobileData, isTrue);
       expect(f.urls, isEmpty, reason: 'probing never starts a download');
-      expect(find.textContaining('用行動數據下載'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, '用行動數據下載（約 1.30 GB）'), findsOneWidget);
       expect(find.text('開始下載（1.30 GB）'), findsNothing);
+      expect(find.textContaining('目前是行動數據'), findsOneWidget);
+      expect(find.textContaining('「用行動數據下載」'), findsOneWidget, reason: 'the hint names the button');
+    });
+
+    testWidgets('packs present + unmetered probe: no mobile-data hint', (t) async {
+      final (d, f) = await pump(t);
+      await d.probeNetwork(_Net(NetKind.unmetered));
+      await t.pump();
+      expect(d.onMobileData, isFalse);
+      expect(f.urls, isEmpty, reason: 'probing never starts a download');
+      expect(find.textContaining('目前是行動數據'), findsNothing);
+      expect(find.textContaining('用行動數據下載'), findsNothing);
     });
   });
 }
