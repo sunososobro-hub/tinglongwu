@@ -103,6 +103,20 @@ class BaseModelDownload extends ChangeNotifier {
   Future<bool> autoStart(NetworkProbe probe) async {
     if (_autoTried || busy || state == BaseDlState.done) return false;
     _autoTried = true;
+    final k = await _probe(probe);
+    if (k != NetKind.unmetered) return false;
+    return run(unmeteredOnly: true);
+  }
+
+  /// Only look at the network (#1998): sets [net] so the screen can name the mobile-data cost, but
+  /// never starts a download. For the first-use screen with optional packs, where the person taps.
+  Future<void> probeNetwork(NetworkProbe probe) async {
+    if (_autoTried || busy || state == BaseDlState.done) return;
+    _autoTried = true;
+    await _probe(probe);
+  }
+
+  Future<NetKind> _probe(NetworkProbe probe) async {
     NetKind k;
     try {
       k = await probe.kind();
@@ -111,8 +125,7 @@ class BaseModelDownload extends ChangeNotifier {
     }
     net = k;
     notifyListeners();
-    if (k != NetKind.unmetered) return false;
-    return run(unmeteredOnly: true);
+    return k;
   }
 
   /// "123 / 1310 MB", empty while the total is not known.
