@@ -11,6 +11,7 @@ void main() {
     ));
     await t.tap(find.text('go'));
     await t.pump();
+    await t.pump(const Duration(milliseconds: 750)); // SnackBar entrance animation
   }
 
   testWidgets('denied notice has a button that opens the system settings', (t) async {
