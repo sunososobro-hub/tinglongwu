@@ -135,3 +135,32 @@ def test_issues_in_range_skips_subject_numbers_that_are_not_prs(tmp_path, monkey
     import pytest
     with pytest.raises(urllib.error.HTTPError):  # other errors still fail loudly
         sn.issues_in_range("r", "v0.2.0", "t", "v0.1.0")
+
+
+def test_issues_in_range_skips_410_and_422_and_keeps_later_prs(tmp_path, monkeypatch, capsys):
+    """#2037: HTTP 422 on /pulls/N aborted the daily run; 404/410/422 skip one line, 401/403/5xx still raise."""
+    import io
+    import urllib.error
+    import pytest
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "gone (#10)")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "unprocessable (#11)")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "real pr (#12)")
+    _git(tmp_path, "tag", "v0.1.0")
+    monkeypatch.chdir(tmp_path)
+    codes = {"10": 410, "11": 422}
+
+    def fake_api(path, token, *a, **k):
+        n = path.rsplit("/", 1)[1]
+        if n in codes:
+            raise urllib.error.HTTPError(path, codes[n], "x", {}, io.BytesIO(b""))
+        return {"body": "Closes #" + n}
+
+    monkeypatch.setattr(sn, "_api", fake_api)
+    assert sn.issues_in_range("r", "v0.1.0", "t", None) == [12]
+    out = capsys.readouterr().out
+    assert "#10 skipped (HTTP 410" in out and "#11 skipped (HTTP 422" in out
+    for bad in (401, 403, 502):
+        codes["11"] = bad
+        with pytest.raises(urllib.error.HTTPError):
+            sn.issues_in_range("r", "v0.1.0", "t", None)
