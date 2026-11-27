@@ -370,10 +370,13 @@ class Busy:
     """n processes that each keep one core busy (the live ASR + MT the summarizer must not slow down)."""
 
     def __init__(self, n: int):
-        self.n, self.stop, self.procs = n, multiprocessing.Event(), []
+        # #2024: spawn, not the Linux default fork: the caller already runs threads, and fork() from a
+        # multi-threaded process can deadlock the child. Event and Process come from the same context.
+        self.ctx = multiprocessing.get_context("spawn")
+        self.n, self.stop, self.procs = n, self.ctx.Event(), []
 
     def __enter__(self):
-        self.procs = [multiprocessing.Process(target=_busy, args=(self.stop,), daemon=True) for _ in range(self.n)]
+        self.procs = [self.ctx.Process(target=_busy, args=(self.stop,), daemon=True) for _ in range(self.n)]
         for p in self.procs:
             p.start()
         return self
@@ -382,6 +385,9 @@ class Busy:
         self.stop.set()
         for p in self.procs:
             p.join(5)
+            if p.is_alive():  # never leave a core-burning child behind
+                p.terminate()
+                p.join(2)
 
 
 def rss_mb() -> float:
