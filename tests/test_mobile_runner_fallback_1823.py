@@ -118,3 +118,36 @@ def test_workflow_wiring():
     fb = wf["jobs"]["runner-fallback"]
     assert fb["runs-on"] == "ubuntu-24.04" and fb["permissions"]["actions"] == "write"
     assert "inputs.runner != 'ubuntu'" in fb["if"] and "vars.MOBILE_RUNNER == 'tlwu-mobile'" in fb["if"]
+
+
+def test_watch_retries_transient_jobs_poll_errors():
+    """#2021: two failed polls then a picked-up build -> (True, ...)."""
+    seq = [mrf.GhError("poll 1"), mrf.GhError("poll 2"),
+           [{"name": "build", "status": "in_progress", "runner_name": "tlwu-mobile"}]]
+
+    def get_jobs():
+        r = seq.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    ok, _ = mrf.watch(get_jobs, wait_min=5, poll_s=30, clock=lambda: 0.0, sleep=lambda s: None)
+    assert ok is True and not seq
+
+
+def test_three_consecutive_poll_errors_fail_with_gh_stderr(monkeypatch, capsys):
+    """#2021: 3 failed polls in a row end the run non-zero with gh's stderr; dispatch / cancel are not retried."""
+    for k, v in {"REPO": "o/r", "RUN_ID": "1", "REF": "fix/1", "WAIT_MIN": "5"}.items():
+        monkeypatch.setenv(k, v)
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="HTTP 502: Bad Gateway")
+
+    monkeypatch.setattr(mrf.subprocess, "run", fake_run)
+    orig = mrf.watch
+    monkeypatch.setattr(mrf, "watch", lambda g, w: orig(g, w, sleep=lambda s: None))
+    assert mrf.main(["x", "watch"]) != 0
+    assert "HTTP 502: Bad Gateway" in capsys.readouterr().err
+    assert len(calls) == 3 and all("/jobs" in c for call in calls for c in call[2:3])
