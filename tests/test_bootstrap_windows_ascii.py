@@ -3,10 +3,11 @@ unsafe through `irm | iex`), with non-English messages stored as base64 UTF-8 an
 import base64
 import re
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
+
+from _pwsh import run_pwsh
 
 PS1 = Path(__file__).resolve().parents[1] / "scripts" / "bootstrap_windows.ps1"
 KEYS = {"start", "git", "zip", "fail", "dirty", "run"}
@@ -50,6 +51,6 @@ def test_pwsh_prints_decoded_message(tmp_path, lang, expected):
     target.mkdir()
     (target / "x.txt").write_text("x")
     env = {"PATH": "/usr/bin:/bin", "TLWU_UI_LANG": lang, "TLWU_DIR": str(target), "USERPROFILE": str(tmp_path)}
-    r = subprocess.run(["pwsh", "-NoProfile", "-File", str(PS1)], capture_output=True, env=env, timeout=120)
+    r = run_pwsh(["-File", str(PS1)], env=env)
     out = r.stdout.decode("utf-8", "replace")
     assert expected in out, out
