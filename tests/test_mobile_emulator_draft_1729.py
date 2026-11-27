@@ -54,5 +54,5 @@ def test_summary_without_draft_log_says_na(tmp_path):
     r = _run(_step("Job summary"), tmp_path, bin_dir)
     assert r.returncode == 0, r.stderr
     s = (tmp_path / "summary.md").read_text(encoding="utf-8")
-    assert "off (ms, report only): **n/a**" in s
+    assert "off (ms, asserted: on <= off + margin): **n/a**" in s
     assert "draft round:" not in s

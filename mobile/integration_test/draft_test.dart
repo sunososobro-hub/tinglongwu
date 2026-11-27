@@ -8,8 +8,8 @@
 // draft is gone ('' or the '…' speaking marker) and no draft is left after the round; for every "off" round no
 // draft text appears at all. (c) Median final ASR+MT latency (Pipeline.lastLatencyMs: estimated speech end ->
 // translation done) on vs off is compared with [kDraftLatencyMarginMs] and printed as
-// `TLWU_DRAFT_LAT on=<ms> off=<ms> margin=<ms> within=<yes|no>` for the job summary. (c) is report-only: rules
-// section 20 allows a timing limit only after >= 10 baseline runs of the current build.
+// `TLWU_DRAFT_LAT on=<ms> off=<ms> margin=<ms> within=<yes|no>` for the job summary, and asserted (on <= off +
+// margin) after the per-round checks; the margin comes from 11 baseline runs (rules section 20, see below).
 // Uses Pipeline.debugFeedMic (as two_way_test.dart) rather than the emulator microphone: each round needs a
 // clean start and end of speech, and the host loop of mic_test.dart repeats the clip without a gap.
 import 'dart:io';
@@ -24,9 +24,12 @@ import 'package:mobile/services/pipeline.dart';
 
 import 'two_way_test.dart' show importZip, pcm16Of, waitFor;
 
-/// Draft-on median latency may exceed draft-off by at most this much (ms). Report-only until 10 baseline runs
-/// exist (rules section 20); then set it to the baseline p95 difference plus a stated margin and assert it.
-const kDraftLatencyMarginMs = 1500;
+/// Draft-on median latency may exceed draft-off by at most this much (ms). Rules section 20 baseline: 11
+/// mobile-emulator runs (dev 66575fb: 45920568200 45920570698 45920572919 45920575345 45920577347 45920579604
+/// 45920581961 45920584117 45920586475 45920588875; PR run 45910280557) gave on-off median differences of
+/// -2035 -1380 -828 -722 -613 -515 -375 138 150 156 1366 ms: p95 761 ms (linear), max 1366 ms.
+/// Limit = p95 rounded up to 800 + a stated 750 ms margin for emulator noise = 1550 ms (11 of 11 baseline runs pass).
+const kDraftLatencyMarginMs = 1550;
 
 /// Measured rounds per toggle state.
 const kRoundsPerState = 3;
@@ -164,5 +167,9 @@ void main() {
     for (final r in off) {
       expect(r.firstDraftMs, isNull, reason: 'draft text shown with 顯示原文草稿 off: $r');
     }
+    // (c) the draft does not slow the final ASR+MT line beyond the baseline margin.
+    expect(within, isTrue,
+        reason: 'draft-on median ${onMed?.round()} ms > draft-off median ${offMed?.round()} ms + '
+            '$kDraftLatencyMarginMs ms');
   });
 }
