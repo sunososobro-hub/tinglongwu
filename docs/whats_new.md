@@ -10,6 +10,11 @@ and a release without it stays a draft.
 - Subtitles appear faster on laptops without an NVIDIA card.
 -->
 
+## v0.5.9
+- Assert draft on/off latency with a margin from 11 baseline runs.
+- Close tts_worker dup-ed stdout file at exit.
+- Busy starts load processes with a spawn context.
+
 ## v0.5.8
 - Collision ledger counts touch-up pushes, not commits.
 - Ledger ticket-supply line and independent tickets in s-split / rules.
