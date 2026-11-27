@@ -209,8 +209,8 @@ jobs:
           bash tool/host_mic.sh stop
           exit $rc
       - name: Integration test (grey source draft on / off, #1729)
-        # After the mic step, so the host clip loop is stopped. The on/off latency medians are report-only
-        # (rules section 20: no timing limit without 10 baseline runs).
+        # After the mic step, so the host clip loop is stopped. The on/off latency medians are asserted with
+        # kDraftLatencyMarginMs in draft_test.dart (limit from 11 baseline runs, rules section 20).
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         env:
           TLWU_X86_64: "1"
@@ -248,7 +248,7 @@ jobs:
             MIC=$(grep -o 'TLWU_MIC_RMS .*' "$RUNNER_TEMP/mic.log" 2>/dev/null | tail -1 || true)
             echo "- emulator mic RMS dBFS (#1728; clip = host zh clip playing, silent = control): **${MIC:-n/a}**"
             DL=$(grep -o 'TLWU_DRAFT_LAT .*' "$RUNNER_TEMP/draft.log" 2>/dev/null | tail -1 | cut -d' ' -f2- || true)
-            echo "- draft (#1729) median final ASR+MT latency, 顯示原文草稿 on vs off (ms, report only): **${DL:-n/a}**"
+            echo "- draft (#1729) median final ASR+MT latency, 顯示原文草稿 on vs off (ms, asserted: on <= off + margin): **${DL:-n/a}**"
             grep -o 'TLWU_DRAFT_ROUND .*' "$RUNNER_TEMP/draft.log" 2>/dev/null | sed 's/^TLWU_DRAFT_ROUND /- draft round: /' || true
             sed 's/^/- qemu audio: /' "$RUNNER_TEMP/qemu-audio.txt" 2>/dev/null || true
             sed 's/^/- pulse: /' "${TLWU_PULSE_DIR:-$RUNNER_TEMP/pulse}/source-outputs.txt" 2>/dev/null || true
