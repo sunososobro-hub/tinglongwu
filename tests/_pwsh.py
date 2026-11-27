@@ -39,12 +39,14 @@ def _has_banner(r: subprocess.CompletedProcess) -> bool:
     return False
 
 
-def run_pwsh(args, *, env=None, pwsh=None, timeout=120, **kwargs) -> subprocess.CompletedProcess:
+def run_pwsh(args, *, env=None, pwsh=None, timeout=120, expect_output=False, **kwargs) -> subprocess.CompletedProcess:
     """Run pwsh with `-NoProfile -NonInteractive` plus `args` (list); capture_output is always on.
 
     `pwsh` is the executable (str) or a command prefix (list, used by the unit test's fake).
     `env` (default os.environ) gets telemetry / update-check off and a fresh PSModuleAnalysisCachePath
-    per call. Other kwargs (text, encoding, cwd) go to subprocess.run.
+    per call. `expect_output=True` (a script that always prints something): exit 0 with blank stdout and stderr is a
+    silent pwsh crash (#2045), retried once and then a PwshCrash; without it a blank result is legitimate and returned.
+    Other kwargs (text, encoding, cwd) go to subprocess.run.
     """
     exe = pwsh or shutil.which("pwsh")
     assert exe, "pwsh is not installed"
@@ -57,7 +59,7 @@ def run_pwsh(args, *, env=None, pwsh=None, timeout=120, **kwargs) -> subprocess.
             r = subprocess.run(prefix + ["-NoProfile", "-NonInteractive", *args], capture_output=True,
                                timeout=timeout, env=e, **kwargs)
         banner = _has_banner(r)
-        if not banner and not _silent_crash(r):
+        if not banner and not (expect_output and _silent_crash(r)):
             return r
         reason = f"'{CRASH_BANNER}'" if banner else "empty output"
     raise PwshCrash(f"pwsh crashed twice with {reason}; stdout={r.stdout!r} stderr={r.stderr!r}")

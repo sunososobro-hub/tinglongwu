@@ -38,7 +38,7 @@ def dry_run(tmp_path: Path, total_mb: int | None, *extra: str) -> str:
     env.update(PATH=f"{bin_dir}{os.pathsep}/usr/bin{os.pathsep}/bin", TLWU_SKIP_SHORTCUT="1",
                POWERSHELL_TELEMETRY_OPTOUT="1", POWERSHELL_UPDATECHECK="Off")
     r = run_pwsh(["-File", str(ROOT / "scripts" / "install.ps1"), "-DryRun", *extra], pwsh=PWSH,
-                 text=True, encoding="utf-8", timeout=180, env=env, cwd=str(tmp_path))
+                 text=True, encoding="utf-8", timeout=180, env=env, cwd=str(tmp_path), expect_output=True)
     assert r.returncode == 0, r.stdout + r.stderr
     return r.stdout
 

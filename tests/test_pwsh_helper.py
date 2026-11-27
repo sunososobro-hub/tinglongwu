@@ -50,13 +50,19 @@ def test_real_script_error_is_not_retried(tmp_path):
 
 def test_silent_empty_output_is_retried_once(tmp_path):
     fake, counter = _fake(tmp_path, crashes=1, silent=True)
-    r = run_pwsh(["-Command", "x"], pwsh=fake, text=True)
+    r = run_pwsh(["-Command", "x"], pwsh=fake, text=True, expect_output=True)
     assert r.returncode == 0 and r.stdout.strip() == "real output"
     assert counter.read_text() == "2"
+
+
+def test_empty_output_without_expect_output_is_returned_once(tmp_path):
+    fake, counter = _fake(tmp_path, crashes=99, silent=True)
+    r = run_pwsh(["-Command", "x"], pwsh=fake, text=True)
+    assert r.returncode == 0 and r.stdout == "" and counter.read_text() == "1"
 
 
 def test_second_silent_crash_fails_with_empty_output(tmp_path):
     fake, counter = _fake(tmp_path, crashes=99, silent=True)
     with pytest.raises(PwshCrash, match="empty output"):
-        run_pwsh(["-Command", "x"], pwsh=fake, text=True)
+        run_pwsh(["-Command", "x"], pwsh=fake, text=True, expect_output=True)
     assert counter.read_text() == "2"
