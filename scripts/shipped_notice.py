@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -66,12 +67,21 @@ def decide(tag: str, prerelease: bool, contained: bool, existing: set[str]) -> s
 
 
 def _api(path: str, token: str, method: str = "GET", data: dict | None = None):
+    """One API call. A GET is retried once after an HTTP 5xx or a network error (#2048)."""
     req = urllib.request.Request(API + path, method=method,
                                  data=json.dumps(data).encode() if data is not None else None,
                                  headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
                                           "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        body = r.read()
+    for attempt in (1, 2):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                body = r.read()
+            break
+        except (urllib.error.HTTPError, urllib.error.URLError) as e:
+            transient = not isinstance(e, urllib.error.HTTPError) or e.code >= 500
+            if method != "GET" or not transient or attempt == 2:
+                raise
+            time.sleep(1)
     return json.loads(body) if body else None
 
 
@@ -158,7 +168,13 @@ def issues_in_range(repo: str, tag: str, token: str, prev: str | None | object =
                 if e.code in (404, 410, 422):  # `(#N)` can name an issue, not a PR (#1504), or an unreadable number (#2037)
                     print(f"{subject!r}: #{m.group(1)} skipped (HTTP {e.code}, not readable as a PR)")
                     continue
+                if e.code >= 500:  # still failing after _api's one retry: skip this commit, keep the run (#2048)
+                    print(f"{subject!r}: #{m.group(1)} skipped (HTTP {e.code}, server error after retry)")
+                    continue
                 raise
+            except urllib.error.URLError as e:
+                print(f"{subject!r}: #{m.group(1)} skipped (network error after retry: {e.reason})")
+                continue
             found += issues_from_body(pr.get("body"))
     return list(dict.fromkeys(found))
 
