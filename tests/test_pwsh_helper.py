@@ -7,7 +7,7 @@ import pytest
 from _pwsh import CRASH_BANNER, PwshCrash, run_pwsh
 
 
-def _fake(tmp_path, crashes):
+def _fake(tmp_path, crashes, silent=False):
     """Fake pwsh (a python script): prints the banner on the first `crashes` calls, then OK."""
     counter = tmp_path / "calls"
     script = tmp_path / "fakepwsh.py"
@@ -19,7 +19,8 @@ def _fake(tmp_path, crashes):
         if os.environ.get('PSModuleAnalysisCachePath') is None or os.environ.get('POWERSHELL_UPDATECHECK') != 'Off':
             sys.exit(7)
         if n < {crashes}:
-            print({CRASH_BANNER!r})
+            if not {silent!r}:
+                print({CRASH_BANNER!r})
             sys.exit(0)
         print('real output'); sys.exit(3 if 'fail' in sys.argv else 0)
     """))
@@ -45,3 +46,17 @@ def test_real_script_error_is_not_retried(tmp_path):
     r = run_pwsh(["fail"], pwsh=fake)
     assert r.returncode == 3 and b"real output" in r.stdout
     assert counter.read_text() == "1"
+
+
+def test_silent_empty_output_is_retried_once(tmp_path):
+    fake, counter = _fake(tmp_path, crashes=1, silent=True)
+    r = run_pwsh(["-Command", "x"], pwsh=fake, text=True)
+    assert r.returncode == 0 and r.stdout.strip() == "real output"
+    assert counter.read_text() == "2"
+
+
+def test_second_silent_crash_fails_with_empty_output(tmp_path):
+    fake, counter = _fake(tmp_path, crashes=99, silent=True)
+    with pytest.raises(PwshCrash, match="empty output"):
+        run_pwsh(["-Command", "x"], pwsh=fake, text=True)
+    assert counter.read_text() == "2"

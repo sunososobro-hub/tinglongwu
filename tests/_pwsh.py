@@ -2,7 +2,7 @@
 
 pwsh sometimes crashes on the CI runner before running the script: exit 0 and the banner
 "An error has occurred that was not properly handled" on stdout. `run_pwsh` retries exactly once
-on that banner; a second crash fails with the banner in the message, any real script error is
+on that banner or on exit 0 with empty stdout and stderr (#2045); a second crash fails with the banner in the message, any real script error is
 returned untouched for the test to assert on.
 """
 from __future__ import annotations
@@ -16,7 +16,18 @@ CRASH_BANNER = "An error has occurred that was not properly handled"
 
 
 class PwshCrash(AssertionError):
-    """pwsh crashed (banner printed) on both attempts."""
+    """pwsh crashed (banner printed, or exit 0 with empty output) on both attempts."""
+
+
+def _text(stream) -> str:
+    if isinstance(stream, bytes):
+        stream = stream.decode("utf-8", "replace")
+    return stream or ""
+
+
+def _silent_crash(r: subprocess.CompletedProcess) -> bool:
+    """pwsh died without the banner: exit 0 and nothing but whitespace on stdout and stderr (#2045)."""
+    return r.returncode == 0 and not _text(r.stdout).strip() and not _text(r.stderr).strip()
 
 
 def _has_banner(r: subprocess.CompletedProcess) -> bool:
@@ -45,6 +56,8 @@ def run_pwsh(args, *, env=None, pwsh=None, timeout=120, **kwargs) -> subprocess.
                  "POWERSHELL_UPDATECHECK": "Off", "PSModuleAnalysisCachePath": os.path.join(cache, "analysis.cache")}
             r = subprocess.run(prefix + ["-NoProfile", "-NonInteractive", *args], capture_output=True,
                                timeout=timeout, env=e, **kwargs)
-        if not _has_banner(r):
+        banner = _has_banner(r)
+        if not banner and not _silent_crash(r):
             return r
-    raise PwshCrash(f"pwsh crashed twice with '{CRASH_BANNER}'; stdout={r.stdout!r} stderr={r.stderr!r}")
+        reason = f"'{CRASH_BANNER}'" if banner else "empty output"
+    raise PwshCrash(f"pwsh crashed twice with {reason}; stdout={r.stdout!r} stderr={r.stderr!r}")
