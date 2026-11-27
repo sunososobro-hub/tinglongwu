@@ -11,6 +11,7 @@ Library prints are diverted to stderr so stdout carries only the protocol.
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import os
 import signal
@@ -34,6 +35,7 @@ except Exception as _e:  # noqa: BLE001  (layout changed: say so, do not break s
     print(f"tlwu worker: network guard NOT installed ({_e!r})", file=sys.stderr)
 
 _OUT = os.fdopen(os.dup(1), "wb", buffering=0)
+atexit.register(_OUT.close)  # #2023: registered first = runs last; an importing test no longer leaves the dup'd fd unclosed
 os.dup2(2, 1)  # anything printed by libraries goes to stderr
 sys.stdout = sys.stderr
 
@@ -47,7 +49,6 @@ def send(obj: dict, payload: bytes = b"") -> None:
 def run_vosk(a) -> int:
     """CPU path with Vosk-TTS (Apache-2.0, own G2P, no espeak). Fixed built-in voices; a request may carry
     "speaker" to switch voice on the fly. model_path is always local, so vosk never downloads anything."""
-    import atexit
     import shutil
     import tempfile
     import wave
