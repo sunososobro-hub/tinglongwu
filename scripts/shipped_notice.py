@@ -155,8 +155,8 @@ def issues_in_range(repo: str, tag: str, token: str, prev: str | None | object =
             try:
                 pr = _api(f"/repos/{repo}/pulls/{m.group(1)}", token)
             except urllib.error.HTTPError as e:
-                if e.code in (404, 410):  # `(#N)` in a subject can name an issue, not a PR (#1504): nothing to read
-                    print(f"{subject!r}: #{m.group(1)} is not a PR, skipped")
+                if e.code in (404, 410, 422):  # `(#N)` can name an issue, not a PR (#1504), or an unreadable number (#2037)
+                    print(f"{subject!r}: #{m.group(1)} skipped (HTTP {e.code}, not readable as a PR)")
                     continue
                 raise
             found += issues_from_body(pr.get("body"))
