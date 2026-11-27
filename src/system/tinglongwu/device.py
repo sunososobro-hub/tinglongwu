@@ -288,7 +288,25 @@ def asr_compute_type(device: str, free_mib=None) -> str:
         return "int8"
     if free_mib is None:
         free_mib = free_vram_mib()
-    return "int8_float16" if free_mib is not None and free_mib < ASR_FP16_MIN_FREE_MIB else "float16"
+    want = "int8_float16" if free_mib is not None and free_mib < ASR_FP16_MIN_FREE_MIB else "float16"
+    supported = _cuda_supported_compute_types()
+    if not supported or want in supported:
+        return want
+    order = ["float16", "int8_float16", "int8", "float32"]  # #2039: Pascal-class cards lack efficient fp16
+    for t in order[order.index(want):]:
+        if t in supported:
+            return t
+    return want
+
+
+def _cuda_supported_compute_types():
+    """Compute types ctranslate2 reports for GPU 0, or None when that cannot be determined."""
+    try:
+        import ctranslate2
+
+        return set(ctranslate2.get_supported_compute_types("cuda")) or None
+    except Exception:  # noqa: BLE001 - ctranslate2 missing / no CUDA device
+        return None
 
 
 def free_vram_mib() -> int | None:

@@ -120,3 +120,31 @@ def test_zh_garbage_detection_and_fallback():
     assert zh_guard("Wow.", "哇。") == "哇。"
     long = "This is a much longer sentence that should not fall back"
     assert zh_guard(long, "珃瓳") == "珃瓳"
+
+
+def test_asr_compute_type_respects_supported_set(monkeypatch):  # #2039
+    monkeypatch.delenv("TLWU_ASR_COMPUTE", raising=False)
+    monkeypatch.setattr(device, "_cuda_supported_compute_types", lambda: {"float32", "int8", "int8_float32"})
+    assert device.asr_compute_type("cuda", free_mib=2000) == "int8"
+    assert device.asr_compute_type("cuda", free_mib=24000) == "int8"
+    monkeypatch.setattr(device, "_cuda_supported_compute_types", lambda: {"float32"})
+    assert device.asr_compute_type("cuda", free_mib=2000) == "float32"
+    monkeypatch.setattr(device, "_cuda_supported_compute_types", lambda: {"float16", "int8_float16", "int8", "float32"})
+    assert device.asr_compute_type("cuda", free_mib=7600) == "int8_float16"
+    assert device.asr_compute_type("cuda", free_mib=24000) == "float16"
+    monkeypatch.setattr(device, "_cuda_supported_compute_types", lambda: None)
+    assert device.asr_compute_type("cuda", free_mib=7600) == "int8_float16"
+    monkeypatch.setenv("TLWU_ASR_COMPUTE", "float32")
+    assert device.asr_compute_type("cuda", free_mib=7600) == "float32"
+
+
+def test_supported_types_lookup_failure_is_none(monkeypatch):  # #2039
+    import sys
+    import types
+    mod = types.ModuleType("ctranslate2")
+
+    def boom(_):
+        raise RuntimeError("no cuda")
+    mod.get_supported_compute_types = boom
+    monkeypatch.setitem(sys.modules, "ctranslate2", mod)
+    assert device._cuda_supported_compute_types() is None
