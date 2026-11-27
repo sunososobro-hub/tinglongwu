@@ -12,6 +12,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _pwsh import run_pwsh
 
 ROOT = Path(__file__).resolve().parent.parent
 HELPERS = ROOT / "scripts" / "install_helpers.ps1"
@@ -29,8 +30,8 @@ def _ps(script: str, timeout: int = 120, tmp: Path | None = None) -> dict[str, s
     env = {**os.environ, "POWERSHELL_TELEMETRY_OPTOUT": "1", "POWERSHELL_UPDATECHECK": "Off"}
     if tmp is not None:  # #1995: [IO.Path]::GetTempPath() reads TMPDIR / TMP, so each call gets its own temp dir
         env.update(TMPDIR=str(tmp), TMP=str(tmp), TEMP=str(tmp))
-    r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", f". '{HELPERS}'\n{script}"],
-                       capture_output=True, text=True, encoding="utf-8", timeout=timeout, env=env, cwd=str(ROOT))
+    r = run_pwsh(["-Command", f". '{HELPERS}'\n{script}"], pwsh=PWSH, text=True, encoding="utf-8",
+                 timeout=timeout, env=env, cwd=str(ROOT))
     assert r.returncode == 0, r.stderr
     return {k: v for k, _, v in (ln.partition("=") for ln in r.stdout.splitlines()) if k.isupper()}
 

@@ -12,6 +12,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _pwsh import run_pwsh
 
 from tlwu_app import tiers, wording
 
@@ -81,8 +82,7 @@ def _gpu_ps(smi: str) -> dict | None:
     script = (". ./scripts/install_helpers.ps1; $g = Get-TlwuGpu $env:TLWU_TEST_SMI; "
               "if ($g) { $g | ConvertTo-Json -Compress } else { 'null' }")
     env = {**os.environ, "TLWU_TEST_SMI": smi, "POWERSHELL_TELEMETRY_OPTOUT": "1", "POWERSHELL_UPDATECHECK": "Off"}
-    r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True, text=True,
-                       encoding="utf-8", timeout=120, env=env, cwd=str(ROOT))
+    r = run_pwsh(["-Command", script], pwsh=PWSH, text=True, encoding="utf-8", timeout=120, env=env, cwd=str(ROOT))
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout.strip().splitlines()[-1])
 
@@ -105,6 +105,5 @@ def test_installer_and_runtime_use_the_same_threshold():
     from tinglongwu.device import DRIVER_URL, MIN_DRIVER
 
     script = ". ./scripts/install_helpers.ps1; \"$TlwuMinDriver|$TlwuDriverUrl\""
-    r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True, text=True,
-                       timeout=120, cwd=str(ROOT))
+    r = run_pwsh(["-Command", script], pwsh=PWSH, text=True, timeout=120, cwd=str(ROOT))
     assert r.stdout.strip() == ".".join(map(str, MIN_DRIVER["win32"])) + "|" + DRIVER_URL

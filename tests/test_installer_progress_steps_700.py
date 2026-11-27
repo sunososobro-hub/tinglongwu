@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _pwsh import run_pwsh
 
 ROOT = Path(__file__).resolve().parent.parent
 PWSH = shutil.which("pwsh")
@@ -23,8 +24,8 @@ Invoke-Expression $fn.Extent.Text
 
 @pytest.mark.skipif(PWSH is None, reason="pwsh not installed")
 def test_step_lines_match_wizard_format_and_total():
-    out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", SCRIPT % (ROOT / "scripts" / "install.ps1")],
-                         capture_output=True, text=True, encoding="utf-8", timeout=120).stdout
+    out = run_pwsh(["-Command", SCRIPT % (ROOT / "scripts" / "install.ps1")], pwsh=PWSH, text=True,
+                    encoding="utf-8", timeout=120).stdout
     steps = [re.match(r"\[(\d+)/(\d+)\]", ln) for ln in out.splitlines() if ln.startswith("[")]
     assert [int(m.group(1)) for m in steps] == list(range(1, 9))
     assert {m.group(2) for m in steps} == {"8"}   # the wizard now reads N from the line, so any N works

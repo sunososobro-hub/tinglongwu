@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _pwsh import run_pwsh
 
 from tinglongwu import langs
 from tinglongwu.gui import core
@@ -103,7 +104,7 @@ def test_windows_menu_lang_name_marks_experimental():
     end = src.index("\n}\n", start) + 3
     script = (f"$py = '{sys.executable}'; $script:M = @{{ LN_auto = 'Auto (JA/EN/RU)' }}\n" + src[start:end] +
               "\nWrite-Output (Get-LangName 'ko'); Write-Output (Get-LangName 'auto'); Write-Output (Get-LangName 'ja')")
-    r = subprocess.run(["pwsh", "-NoProfile", "-Command", script], capture_output=True, env=_env("en"), cwd=ROOT)
+    r = run_pwsh(["-Command", script], env=_env("en"), cwd=ROOT)
     assert r.stdout.decode("utf-8").split() == ["Korean", "(experimental)", "Auto", "(JA/EN/RU)", "Japanese"]
 
 
