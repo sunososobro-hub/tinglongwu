@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _pwsh import run_pwsh
 
 from tinglongwu_setup import downloader as dl
 
@@ -24,8 +25,7 @@ needs_pwsh = pytest.mark.skipif(PWSH is None, reason="pwsh not installed")
 
 def _ps(script: str, timeout: int = 120) -> subprocess.CompletedProcess:
     env = {**os.environ, "POWERSHELL_TELEMETRY_OPTOUT": "1", "POWERSHELL_UPDATECHECK": "Off"}
-    return subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True,
-                          text=True, encoding="utf-8", timeout=timeout, env=env, cwd=str(ROOT))
+    return run_pwsh(["-Command", script], pwsh=PWSH, text=True, encoding="utf-8", timeout=timeout, env=env, cwd=str(ROOT))
 
 
 # ---------------------------------------------------------------- Python: download percent

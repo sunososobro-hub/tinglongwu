@@ -8,10 +8,10 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
+from _pwsh import run_pwsh
 
 from tinglongwu import i18n
 
@@ -31,8 +31,7 @@ def _run_block(lang: str, cfg_dir: Path) -> list[str]:
     script = f"$Lang = '{lang}'; $DryRun = $false\n{_ui_lang_block()}"
     env = {**os.environ, "TLWU_CONFIG_DIR": str(cfg_dir), "POWERSHELL_TELEMETRY_OPTOUT": "1",
            "POWERSHELL_UPDATECHECK": "Off"}
-    r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True,
-                       text=True, encoding="utf-8", timeout=120, env=env)
+    r = run_pwsh(["-Command", script], pwsh=PWSH, text=True, encoding="utf-8", timeout=120, env=env)
     assert r.returncode == 0, r.stdout + r.stderr
     return (cfg_dir / "config").read_text("ascii").splitlines()
 

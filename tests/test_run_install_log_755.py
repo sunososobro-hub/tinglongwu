@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from _pwsh import run_pwsh
 
 ROOT = Path(__file__).resolve().parents[1]
 PWSH = shutil.which("pwsh") or shutil.which("powershell")
@@ -26,8 +26,7 @@ def test_install_log_is_bomfree_complete_and_not_held_open(tmp_path):
         "Write-Host '[3/8] three'\n",
         encoding="utf-8-sig",
     )
-    r = subprocess.run([PWSH, "-NoProfile", "-File", str(tmp_path / "installer" / "run_install.ps1")],
-                       capture_output=True, text=True, timeout=120)
+    r = run_pwsh(["-File", str(tmp_path / "installer" / "run_install.ps1")], pwsh=PWSH, text=True, timeout=120)
     assert r.returncode == 0, r.stderr
     raw = (tmp_path / "install.log").read_bytes()
     assert not raw.startswith(b"\xef\xbb\xbf") and not raw.startswith(b"\xff\xfe")
@@ -60,8 +59,7 @@ def test_reader_holding_the_log_does_not_abort_the_install(tmp_path):
         "Write-Host '[3/8] three'\n",
         encoding="utf-8-sig",
     )
-    r = subprocess.run([PWSH, "-NoProfile", "-File", str(tmp_path / "installer" / "run_install.ps1")],
-                       capture_output=True, text=True, timeout=120)
+    r = run_pwsh(["-File", str(tmp_path / "installer" / "run_install.ps1")], pwsh=PWSH, text=True, timeout=120)
     assert r.returncode == 0, r.stderr
     lines = (tmp_path / "install.log").read_text("utf-8").splitlines()
     assert [ln for ln in lines if ln.startswith("[")] == ["[1/8] one", "[2/8] two", "[3/8] three"]

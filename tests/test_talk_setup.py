@@ -3,10 +3,10 @@ import hashlib
 import io
 import json
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
+from _pwsh import run_pwsh
 
 from tinglongwu_setup import cli, downloader, talk
 
@@ -178,9 +178,8 @@ def test_cli_talk_end_to_end(tmp_path, pins, monkeypatch):
 def test_install_dry_run_sets_up_talk_mode_and_one_shortcut():
     # #124: install.ps1 step 6 runs `tlwu-setup --talk` with the tier's args; #1005: step 7 makes one desktop icon
     root = Path(__file__).resolve().parent.parent
-    r = subprocess.run(["pwsh", "-NoProfile", "-NonInteractive", "-Command",
-                        f"& '{root / 'install.ps1'}' -DryRun -Cpu; exit $LASTEXITCODE"],
-                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+    r = run_pwsh(["-Command", f"& '{root / 'install.ps1'}' -DryRun -Cpu; exit $LASTEXITCODE"],
+                 text=True, encoding="utf-8", errors="replace", timeout=300)
     lines = r.stdout.splitlines()
     if r.returncode != 0 and any("Python 3.10-3.12 not found" in x for x in lines):
         pytest.skip("no Python 3.10-3.12 on PATH for the installer's step 1")

@@ -11,6 +11,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from _pwsh import run_pwsh
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
@@ -60,8 +61,7 @@ def _run_helper(tmp_path, app, zp, env):
     done.wait()
     script = tmp_path / "helper.ps1"
     script.write_text(uc.apply_text(zp, app, done.pid), "utf-8-sig")  # the helper minus the GUI start
-    return subprocess.run([PWSH, "-NoProfile", "-File", str(script)], env=env, capture_output=True, text=True,
-                          timeout=120)
+    return run_pwsh(["-File", str(script)], pwsh=PWSH, env=env, text=True, timeout=120)
 
 
 @pytest.mark.skipif(PWSH is None, reason="needs PowerShell")

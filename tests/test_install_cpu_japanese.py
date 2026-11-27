@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _pwsh import run_pwsh
 
 from tinglongwu import llamacheck
 
@@ -24,8 +25,7 @@ def _ps(script: str, timeout: int = 120, **env) -> subprocess.CompletedProcess:
     e = {**os.environ, "POWERSHELL_TELEMETRY_OPTOUT": "1", "POWERSHELL_UPDATECHECK": "Off", **env}
     if "TLWU_TEST_RAM_MB" not in env:
         e.pop("TLWU_TEST_RAM_MB", None)
-    return subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True,
-                          text=True, encoding="utf-8", timeout=timeout, env=e, cwd=str(ROOT))
+    return run_pwsh(["-Command", script], pwsh=PWSH, text=True, encoding="utf-8", timeout=timeout, env=e, cwd=str(ROOT))
 
 
 def _dry_run_cpu(**env) -> list[str]:
