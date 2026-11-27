@@ -78,7 +78,8 @@ def test_latency_log_does_not_share_row_with_draft():
 
 
 # ---- Whisper compute type on a tight GPU ----
-def test_asr_compute_type_by_free_vram():
+def test_asr_compute_type_by_free_vram(monkeypatch):
+    monkeypatch.setattr(device, "_cuda_supported_compute_types", lambda: None)  # #2039: hermetic, no ctranslate2 probe
     assert device.asr_compute_type("cpu") == "int8"
     assert device.asr_compute_type("cuda", free_mib=7600) == "int8_float16"
     assert device.asr_compute_type("cuda", free_mib=24000) == "float16"
@@ -132,6 +133,8 @@ def test_asr_compute_type_respects_supported_set(monkeypatch):  # #2039
     monkeypatch.setattr(device, "_cuda_supported_compute_types", lambda: {"float16", "int8_float16", "int8", "float32"})
     assert device.asr_compute_type("cuda", free_mib=7600) == "int8_float16"
     assert device.asr_compute_type("cuda", free_mib=24000) == "float16"
+    monkeypatch.setattr(device, "_cuda_supported_compute_types", lambda: {"float16", "int8", "float32"})
+    assert device.asr_compute_type("cuda", free_mib=2000) == "float16"
     monkeypatch.setattr(device, "_cuda_supported_compute_types", lambda: None)
     assert device.asr_compute_type("cuda", free_mib=7600) == "int8_float16"
     monkeypatch.setenv("TLWU_ASR_COMPUTE", "float32")

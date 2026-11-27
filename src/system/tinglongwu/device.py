@@ -293,7 +293,7 @@ def asr_compute_type(device: str, free_mib=None) -> str:
     if not supported or want in supported:
         return want
     order = ["float16", "int8_float16", "int8", "float32"]  # #2039: Pascal-class cards lack efficient fp16
-    for t in order[order.index(want):]:
+    for t in order:
         if t in supported:
             return t
     return want
