@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>tlwu 版本地圖</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="icon" href="favicon.ico" sizes="any">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: generated release track (you are here -> next -> later milestones), then what works today. */
+:root{
+  --bg:#f6f7f9; --fg:#1b2230; --muted:#5d6878; --rule:#d9dee6; --station:#ffffff; --here:#fff3c4; --past:#eceff3;
+  --listen:#2f6fdb; --speak:#e2731f; --ear:#1f9d6b; --lang:#8a4fd1; --plat:#6b7686; --ship:#b5367a;
+  --ok:#1f9d6b; --ci:#d9a514; --none:#c3cad4;
+  --display:"Space Grotesk","Noto Sans TC",system-ui,sans-serif;
+  --text:"Noto Sans TC",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12161d; --fg:#e7ebf2; --muted:#9aa5b5; --rule:#2a313c; --station:#12161d; --here:#3a3214; --past:#181d25;
+  --listen:#5b93ff; --speak:#ff9a4d; --ear:#3cc48f; --lang:#b07cf2; --plat:#8d98a8; --ship:#e86aaf;
+  --ok:#3cc48f; --ci:#e9bd3a; --none:#3a4350; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12161d; --fg:#e7ebf2; --muted:#9aa5b5; --rule:#2a313c; --station:#12161d; --here:#3a3214; --past:#181d25;
+  --listen:#5b93ff; --speak:#ff9a4d; --ear:#3cc48f; --lang:#b07cf2; --plat:#8d98a8; --ship:#e86aaf;
+  --ok:#3cc48f; --ci:#e9bd3a; --none:#3a4350; color-scheme:dark}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--text);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 40px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{font-family:var(--display);font-size:26px;margin:0}
+h2{font-family:var(--display);font-size:19px;margin:10px 0 0}
+/* today's support grid */
+.today{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.panel{border:1px solid var(--rule);border-radius:10px;padding:14px;min-width:0;overflow-x:auto}
+.grid{display:grid;gap:6px 4px;align-items:center;font-size:13px}
+.g-os{grid-template-columns:7.5em repeat(5,1fr)}
+.grid .h{font-size:11.5px;color:var(--muted);text-align:center}
+.grid .r{font-weight:700;white-space:nowrap}
+.c{display:flex;justify-content:center;align-items:center;gap:4px;font-size:10.5px;color:var(--muted)}
+.c i{width:16px;height:16px;border-radius:50%;display:inline-block}
+.ok{background:var(--ok)} .ci{background:var(--ci)} .no-{background:var(--none)}
+.same{color:var(--muted)}
+.key{display:flex;flex-wrap:wrap;gap:16px;font-size:13px;color:var(--muted)}
+.key span{display:inline-flex;gap:6px;align-items:center}
+.readme{margin:0;font-size:13px} .readme a{color:var(--listen)}
+.head{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center}
+.langs{display:flex;flex-wrap:wrap;gap:6px}
+.langs button{font:inherit;font-size:13px;border:1px solid var(--rule);background:var(--bg);color:var(--fg);border-radius:999px;padding:5px 12px;cursor:pointer}
+.langs button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.langs button:focus-visible{outline:2px solid var(--listen);outline-offset:2px}
+.g-lang{grid-template-columns:7.5em repeat(5,1fr)}
+.next{border:2px solid var(--ship);border-radius:12px;padding:16px 18px;background:var(--here)}
+.next .nt{font-size:13px;color:var(--muted);letter-spacing:.04em}
+.next .nt b{font-family:var(--display);color:var(--ship)}
+.next .hl{font-family:var(--display);font-size:24px;line-height:1.3;margin:6px 0 4px}
+.next .dt{margin:0 0 8px;font-size:15px}
+.next .go{color:var(--listen);font-size:14px;font-weight:700}
+.key i{width:14px;height:14px;border-radius:50%;display:inline-block}
+/* generated release track (#661, scripts/render_roadmap.py): you are here -> next -> later milestones */
+.track{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.tc{border:1px solid var(--rule);border-radius:10px;padding:12px 14px;min-width:0;background:var(--station)}
+.tc.here{background:var(--here);border-color:var(--ship)} .tc.next{border:2px solid var(--ship)}
+.tc .role{font-size:12px;color:var(--muted);letter-spacing:.04em}
+.tc h3{font-family:var(--display);font-size:18px;margin:4px 0 6px} .tc h3 a{color:var(--fg)}
+.tc .theme{margin:0 0 8px;font-size:13.5px;line-height:1.5;overflow-wrap:anywhere}
+.tc .cnt{margin:4px 0 0;font-size:12px;color:var(--muted)}
+.tc .bar{height:6px;border-radius:3px;background:var(--rule);overflow:hidden} .tc .bar i{display:block;height:100%;background:var(--ok)}
+.tc .ring{width:64px;height:64px;display:block;margin:2px 0 6px;transform:rotate(-90deg)}
+.tc .ring circle{fill:none;stroke-width:4} .tc .ring .rt{stroke:var(--rule)} .tc .ring .rf{stroke:var(--ok);stroke-linecap:round}
+.tc .ring text{transform:rotate(90deg);transform-origin:18px 18px;font:700 9px var(--display);fill:var(--fg);stroke:none}
+.track.timeline{position:relative}
+.track.timeline .tc{position:relative}
+.track.timeline .tc::before{content:"";position:absolute;top:-7px;left:14px;width:12px;height:12px;border-radius:50%;background:var(--rule);border:2px solid var(--bg)}
+.track.timeline .tc.here::before{background:var(--ship)} .track.timeline .tc.next::before{background:var(--ok)}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="head"><h1 data-k="k0">tlwu 版本地圖</h1><div class="langs" id="langs" role="group" aria-label="Language"></div></div>
+
+  <!-- ROADMAP-NEXT:START -->
+<section class="next" aria-label="Next release">
+  <div class="nt"><span class="tag" data-en="Next release" data-zh-cn="下一版">下一版</span> <b>v0.5</b></div>
+  <p class="dt">主題：更快、更準。字幕延遲降 30%（#21），翻譯變差就擋 merge（#340/#570），用真實回報擴充 eval（#679）。</p>
+  <a class="go" href="https://github.com/sunososobro-hub/tinglongwu/milestone/6" data-en="See everything planned for v0.5" data-zh-cn="看 v0.5 的完整清单">看 v0.5 的完整清單</a>
+</section>
+<!-- ROADMAP-NEXT:END -->
+
+  <h2 data-k="kt">版本路線</h2>
+  <!-- ROADMAP-TRACK:START -->
+<div class="track timeline">
+  <section class="tc here">
+    <span class="role" data-en="You are here" data-zh-cn="你在这里">你在這裡</span>
+    <h3>v0.5.9</h3>
+    <p class="cnt" data-en="Latest published release" data-zh-cn="最新发布版">最新發佈版</p>
+  </section>
+  <section class="tc next">
+    <span class="role" data-en="Next release" data-zh-cn="下一版">下一版</span>
+    <h3><a href="https://github.com/sunososobro-hub/tinglongwu/milestone/6">v0.5</a></h3>
+    <p class="theme">主題：更快、更準。字幕延遲降 30%（#21），翻譯變差就擋 merge（#340/#570），用真實回報擴充 eval（#679）。</p>
+    <svg class="ring" viewBox="0 0 36 36" role="img" aria-label="23/23 (100%)"><circle cx="18" cy="18" r="15.9155" class="rt"/><circle cx="18" cy="18" r="15.9155" class="rf" stroke-dasharray="100 0"/><text x="18" y="21.5" text-anchor="middle">100%</text></svg>
+    <p class="cnt">23 / 23 <span class="u" data-en="issues done" data-zh-cn="张完成">張完成</span></p>
+  </section>
+  <section class="tc later">
+    <span class="role" data-en="Later" data-zh-cn="之后">之後</span>
+    <h3><a href="https://github.com/sunososobro-hub/tinglongwu/milestone/11">v0.6</a></h3>
+    <p class="theme">Headline (so 哥 2026-11-25): listen to English, read the Chinese aloud, for people who cannot see. Zh voice pack, TalkBack, no overlap with the original audio. Plan: docs/accessibility-listen-speak.md.</p>
+    <svg class="ring" viewBox="0 0 36 36" role="img" aria-label="6/9 (67%)"><circle cx="18" cy="18" r="15.9155" class="rt"/><circle cx="18" cy="18" r="15.9155" class="rf" stroke-dasharray="67 33"/><text x="18" y="21.5" text-anchor="middle">67%</text></svg>
+    <p class="cnt">6 / 9 <span class="u" data-en="issues done" data-zh-cn="张完成">張完成</span></p>
+  </section>
+  <section class="tc later">
+    <span class="role" data-en="Later" data-zh-cn="之后">之後</span>
+    <h3><a href="https://github.com/sunososobro-hub/tinglongwu/milestone/12">v0.7</a></h3>
+    <p class="theme">After v0.6: self-update signature, hotfix lane finish, mic input (moved from v0.6 on 2026-11-25 by so 哥).</p>
+    <svg class="ring" viewBox="0 0 36 36" role="img" aria-label="1/5 (20%)"><circle cx="18" cy="18" r="15.9155" class="rt"/><circle cx="18" cy="18" r="15.9155" class="rf" stroke-dasharray="20 80"/><text x="18" y="21.5" text-anchor="middle">20%</text></svg>
+    <p class="cnt">1 / 5 <span class="u" data-en="issues done" data-zh-cn="张完成">張完成</span></p>
+  </section>
+  <section class="tc later">
+    <span class="role" data-en="Later" data-zh-cn="之后">之後</span>
+    <h3><a href="https://github.com/sunososobro-hub/tinglongwu/milestone/4">mobile 0.2</a></h3>
+    <p class="theme">手機線，跟桌機版本分開走。等桌機 v0.4 小白版穩了再衝；Android 先，iOS（#658）後。</p>
+    <svg class="ring" viewBox="0 0 36 36" role="img" aria-label="8/14 (57%)"><circle cx="18" cy="18" r="15.9155" class="rt"/><circle cx="18" cy="18" r="15.9155" class="rf" stroke-dasharray="57 43"/><text x="18" y="21.5" text-anchor="middle">57%</text></svg>
+    <p class="cnt">8 / 14 <span class="u" data-en="issues done" data-zh-cn="张完成">張完成</span></p>
+  </section>
+  <section class="tc later">
+    <span class="role" data-en="Later" data-zh-cn="之后">之後</span>
+    <h3><a href="https://github.com/sunososobro-hub/tinglongwu/milestone/3">Later</a></h3>
+    <p class="theme">凍結中（owner 2026-11-14：先修到好，不衝新功能）。等使用者回報證明有需求再拉回來。</p>
+    <svg class="ring" viewBox="0 0 36 36" role="img" aria-label="13/25 (52%)"><circle cx="18" cy="18" r="15.9155" class="rt"/><circle cx="18" cy="18" r="15.9155" class="rf" stroke-dasharray="52 48"/><text x="18" y="21.5" text-anchor="middle">52%</text></svg>
+    <p class="cnt">13 / 25 <span class="u" data-en="issues done" data-zh-cn="张完成">張完成</span></p>
+  </section>
+</div>
+<!-- ROADMAP-TRACK:END -->
+  <p class="readme" data-k="kn">每小時從 GitHub 里程碑與最新發佈版自動產生。</p>
+
+  <h2 data-k="k49">你在這裡：現在能用什麼</h2>
+  <div class="key">
+    <span><i class="ok"></i><b style="font-weight:400" data-k="k54">實機測過</b></span>
+    <span><i class="ci"></i><b style="font-weight:400" data-k="k55">只在自動測試</b></span>
+    <span><i class="no-"></i><b style="font-weight:400" data-k="k56">還沒測</b></span>
+  </div>
+  <!-- ROADMAP-GRID:START -->
+<div class="today">
+  <div class="panel">
+    <div class="grid g-os">
+      <span></span><span class="h" data-en="Install" data-zh-cn="安装">安裝</span><span class="h" data-en="Translate subtitles" data-zh-cn="翻译字幕">翻譯字幕</span><span class="h" data-en="Speak (voice)" data-zh-cn="说话（语音）">說話（語音）</span><span class="h" data-en="GPU" data-zh-cn="GPU">GPU</span><span class="h" data-en="CPU-only" data-zh-cn="纯 CPU">純 CPU</span>
+      <span class="r" data-en="Windows 10/11" data-zh-cn="Windows 10/11">Windows 10/11</span><span class="c"><i class="ci"></i></span><span class="c"><i class="ok"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="ok"></i></span><span class="c"><i class="ci"></i></span>
+      <span class="r" data-en="macOS" data-zh-cn="macOS">macOS</span><span class="c"><i class="ci"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="Linux (Ubuntu 24.04)" data-zh-cn="Linux（Ubuntu 24.04）">Linux（Ubuntu 24.04）</span><span class="c"><i class="ok"></i></span><span class="c"><i class="ok"></i></span><span class="c"><i class="ok"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="ci"></i></span>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="grid g-lang">
+      <span></span><span class="h" data-en="Hear it" data-zh-cn="听得懂">聽得懂</span><span class="h" data-en="To 繁體中文" data-zh-cn="译成繁体中文">譯成繁體中文</span><span class="h" data-en="To 简体中文" data-zh-cn="译成简体中文">譯成簡體中文</span><span class="h" data-en="To English" data-zh-cn="译成英文">譯成英文</span><span class="h" data-en="Speak it (voice)" data-zh-cn="念出来（语音）">念出來（語音）</span>
+      <span class="r" data-en="中文 (zh)" data-zh-cn="中文 (zh)">中文 (zh)</span><span class="c"><i class="ok"></i></span><span class="c same">—</span><span class="c same">—</span><span class="c"><i class="ok"></i></span><span class="c"><i class="ok"></i>Windows</span>
+      <span class="r" data-en="English (en)" data-zh-cn="English (en)">English (en)</span><span class="c"><i class="ok"></i></span><span class="c"><i class="ok"></i></span><span class="c"><i class="ci"></i></span><span class="c same">—</span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="日本語 (ja)" data-zh-cn="日本語 (ja)">日本語 (ja)</span><span class="c"><i class="ok"></i></span><span class="c"><i class="ok"></i></span><span class="c"><i class="ci"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="Русский (ru)" data-zh-cn="Русский (ru)">Русский (ru)</span><span class="c"><i class="ci"></i></span><span class="c"><i class="ci"></i></span><span class="c"><i class="ci"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="ok"></i>Linux</span>
+      <span class="r" data-en="한국어 (ko)" data-zh-cn="한국어 (ko)">한국어 (ko)</span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="Tiếng Việt (vi)" data-zh-cn="Tiếng Việt (vi)">Tiếng Việt (vi)</span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="ไทย (th)" data-zh-cn="ไทย (th)">ไทย (th)</span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="Bahasa Indonesia (id)" data-zh-cn="Bahasa Indonesia (id)">Bahasa Indonesia (id)</span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="Español (es)" data-zh-cn="Español (es)">Español (es)</span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="Deutsch (de)" data-zh-cn="Deutsch (de)">Deutsch (de)</span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+      <span class="r" data-en="Français (fr)" data-zh-cn="Français (fr)">Français (fr)</span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span><span class="c"><i class="no-"></i></span>
+    </div>
+  </div>
+</div>
+<!-- ROADMAP-GRID:END -->
+  <p class="readme"><a href="https://github.com/sunososobro-hub/tinglongwu#readme" data-k="rd">安裝與貢獻者：見 README</a></p>
+</div>
+<script>
+const LANGS=[["en","English"],["zh-tw","繁體中文"],["zh-cn","简体中文"]];
+const HTML_LANG={"en":"en","zh-tw":"zh-Hant","zh-cn":"zh-Hans"};
+const T={"en": {"k0": "tlwu version map", "kt": "Release track", "kf": "See all milestones", "kn": "Generated every hour from GitHub milestones and the latest published release.", "k49": "You are here: what works today", "k54": "Tested on a real device", "k55": "Automated tests only", "k56": "Not tested yet", "rd": "Install and contributors: see the README"}, "zh-cn": {"k0": "tlwu 版本地图", "kt": "版本路线", "kf": "看所有里程碑", "kn": "每小时从 GitHub 里程碑与最新发布版自动生成。", "k49": "你在这里：现在能用什么", "k54": "实机测过", "k55": "只在自动测试", "k56": "还没测", "rd": "安装与贡献者：见 README"}};
+const BASE={};
+document.querySelectorAll("[data-k]").forEach(el=>BASE[el.dataset.k]=el.textContent);
+const ARIA=document.querySelector("[data-aria-k]"),ARIA0=ARIA&&ARIA.getAttribute("aria-label");
+const box=document.getElementById("langs");
+LANGS.forEach(([code,name])=>{const b=document.createElement("button");b.type="button";b.id="lang-"+code;
+  b.textContent=name;b.onclick=()=>{setLang(code);try{history.replaceState(null,"","#"+code)}catch(e){location.hash=code}};box.appendChild(b)});
+function setLang(code){
+  if(!LANGS.some(l=>l[0]===code))code="zh-tw";
+  const d=T[code]||{};
+  document.querySelectorAll("[data-k]").forEach(el=>{el.textContent=d[el.dataset.k]??BASE[el.dataset.k]});
+  /* the generated support grid carries its own labels: data-en / data-zh-cn (zh-TW is the text itself) */
+  document.querySelectorAll("[data-en]").forEach(el=>{if(el.dataset.zhtw===undefined)el.dataset.zhtw=el.textContent;
+    el.textContent=code==="en"?el.dataset.en:code==="zh-cn"?el.dataset.zhCn:el.dataset.zhtw});
+  if(ARIA)ARIA.setAttribute("aria-label",d.al??ARIA0);
+  document.documentElement.lang=HTML_LANG[code];
+  document.title=d.k0??BASE.k0;
+  box.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.id==="lang-"+code)));
+  try{localStorage.setItem("tlwu-roadmap-lang",code)}catch(e){}
+}
+function initial(){const h=location.hash.slice(1).toLowerCase();if(h)return h;
+  try{const s=localStorage.getItem("tlwu-roadmap-lang");if(s)return s}catch(e){}
+  const n=(navigator.language||"en").toLowerCase();
+  return n.startsWith("zh")?(/tw|hk|hant/.test(n)?"zh-tw":"zh-cn"):"en"}
+window.addEventListener("hashchange",()=>setLang(location.hash.slice(1).toLowerCase()));
+setLang(initial());
+</script>
+</body>
+</html>
