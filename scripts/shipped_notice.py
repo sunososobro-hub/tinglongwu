@@ -179,8 +179,14 @@ def issues_in_range(repo: str, tag: str, token: str, prev: str | None | object =
     return list(dict.fromkeys(found))
 
 
-def notify_tag(repo: str, token: str, tag: str, prerelease: bool, nums: list[int], dry_run: bool) -> None:
+def notify_tag(repo: str, token: str, tag: str, prerelease: bool, nums: list[int], dry_run: bool,
+               deadline: float | None = None) -> int | None:
+    """Post the notes for `nums`. Returns the last issue handled when `deadline` (time.monotonic) passed, else None."""
+    last: int | None = None
     for n in nums:
+        if deadline is not None and time.monotonic() >= deadline:
+            return last if last is not None else 0
+        last = n
         try:
             issue = _api(f"/repos/{repo}/issues/{n}", token)
         except urllib.error.HTTPError as e:
@@ -190,14 +196,18 @@ def notify_tag(repo: str, token: str, tag: str, prerelease: bool, nums: list[int
             raise
         if issue.get("state") != "closed" or issue.get("pull_request"):
             continue
-        contained = any(is_ancestor(c, tag) for c in fix_commits(repo, n, token))
         existing = shipped_kinds([c["body"] for c in _paged(f"/repos/{repo}/issues/{n}/comments", token)
                                   if c["user"]["login"] == "github-actions[bot]"])
+        if decide(tag, prerelease, True, existing) is None:  # nothing to add whatever the fix commits are (#2057)
+            print(f"#{n}: already noted, skipped")
+            continue
+        contained = any(is_ancestor(c, tag) for c in fix_commits(repo, n, token))
         text = decide(tag, prerelease, contained, existing)
         if text:
             print(f"#{n}: {text}")
             if not dry_run:
                 _api(f"/repos/{repo}/issues/{n}/comments", token, "POST", {"body": text})
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -207,7 +217,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="scan the newest releases (pre-releases included), oldest first; de-dup makes it safe to repeat")
     ap.add_argument("--issues", default="", help="comma list to backfill; default: issues in the tag's range")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--budget-sec", type=float, default=480.0,
+                    help="stop the scan cleanly (exit 0) after this many seconds; default 480 (8 min)")
     args = ap.parse_args(argv)
+    sys.stdout.reconfigure(line_buffering=True)  # piped stdout is block-buffered: keep the Actions log readable (#2057)
+    deadline = time.monotonic() + args.budget_sec
     if bool(args.tag) == args.all:
         ap.error("give exactly one of --tag or --all")
     repo, token = os.environ.get("GITHUB_REPOSITORY", "sunososobro-hub/tinglongwu"), os.environ.get("GITHUB_TOKEN", "")
@@ -226,7 +240,10 @@ def main(argv: list[str] | None = None) -> int:
             continue
         rel = by_tag.get(tag) or _api(f"/repos/{repo}/releases/tags/{tag}", token)
         nums = explicit or issues_in_range(repo, tag, token, previous_tag(releases, tag))
-        notify_tag(repo, token, tag, bool(rel.get("prerelease")), nums, args.dry_run)
+        stopped = notify_tag(repo, token, tag, bool(rel.get("prerelease")), nums, args.dry_run, deadline)
+        if stopped is not None:
+            print(f"budget reached after {tag} #{stopped}")
+            return 0
     return 0
 
 
