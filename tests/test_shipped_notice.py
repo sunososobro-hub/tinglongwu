@@ -236,3 +236,54 @@ def test_issues_in_range_continues_after_5xx_twice(tmp_path, monkeypatch, capsys
     monkeypatch.setattr(sn.time, "sleep", lambda s: None)
     assert sn.issues_in_range("r", "v0.1.0", "t", None) == [22, 20]
     assert "'flaky (#21)': #21 skipped (HTTP 500" in capsys.readouterr().out
+
+
+def _fake_env(monkeypatch, comments):
+    calls = []
+
+    def fake_api(path, token, method="GET", data=None):
+        calls.append((method, path))
+        return {"state": "closed", "user": {"login": "x"}}
+
+    monkeypatch.setattr(sn, "_api", fake_api)
+    monkeypatch.setattr(sn, "_paged", lambda path, token: (calls.append(("GET", path)), comments)[1])
+    return calls
+
+
+def test_notify_tag_skips_timeline_when_already_noted(monkeypatch, capsys):
+    done = [{"body": "Shipped in v1.0.0", "user": {"login": "github-actions[bot]"}}]
+    calls = _fake_env(monkeypatch, done)
+    assert sn.notify_tag("o/r", "t", "v1.0.0", False, [5], False) is None
+    assert not any("timeline" in p or "/pulls/" in p for _, p in calls)
+    assert "#5: already noted, skipped" in capsys.readouterr().out
+
+
+def test_notify_tag_still_looks_up_fix_when_not_noted(monkeypatch):
+    calls = _fake_env(monkeypatch, [])
+    monkeypatch.setattr(sn, "fix_commits", lambda *a: calls.append(("GET", "fix_commits")) or [])
+    sn.notify_tag("o/r", "t", "v1.0.0", False, [5], False)
+    assert ("GET", "fix_commits") in calls
+
+
+def test_notify_tag_budget_stops_with_last_issue(monkeypatch):
+    _fake_env(monkeypatch, [{"body": "Shipped in v1.0.0", "user": {"login": "github-actions[bot]"}}])
+    ticks = iter([0.0, 20.0])
+    monkeypatch.setattr(sn.time, "monotonic", lambda: next(ticks))
+    assert sn.notify_tag("o/r", "t", "v1.0.0", False, [5, 6, 7], False, deadline=10.0) == 5
+
+
+def test_main_budget_prints_final_line_and_exits_zero(monkeypatch, capsys):
+    monkeypatch.setattr(sn, "_api", lambda *a, **k: [{"tag_name": "v1.0.0", "prerelease": False}])
+    monkeypatch.setattr(sn, "_have_tag", lambda t: True)
+    monkeypatch.setattr(sn, "issues_in_range", lambda *a, **k: [5, 6])
+    monkeypatch.setattr(sn, "notify_tag", lambda *a, **k: 5)
+    assert sn.main(["--all", "--budget-sec", "0.001"]) == 0
+    assert capsys.readouterr().out.strip().endswith("budget reached after v1.0.0 #5")
+
+
+def test_main_sets_line_buffering(monkeypatch):
+    seen = []
+    monkeypatch.setattr(sn.sys.stdout, "reconfigure", lambda **k: seen.append(k), raising=False)
+    monkeypatch.setattr(sn, "_api", lambda *a, **k: [])
+    sn.main(["--all"])
+    assert {"line_buffering": True} in seen
