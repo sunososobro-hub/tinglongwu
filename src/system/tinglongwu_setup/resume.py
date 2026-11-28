@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -22,10 +23,20 @@ def _sha(p: Path) -> str:
     return h.hexdigest()
 
 
+_OPEN_ATTEMPTS = 4  # opener tries per start (#2051): a transient 429 / 5xx / network error is retried with backoff
+
+
+def _transient(e: BaseException) -> bool:
+    if isinstance(e, urllib.error.HTTPError):
+        return e.code == 429 or 500 <= e.code < 600
+    return isinstance(e, (urllib.error.URLError, ConnectionError, TimeoutError))
+
+
 def fetch(url: str, dest: Path, sha256: str, opener=_open_range, on_bytes=None, chunk: int = 1 << 20,
-          label: str | None = None, say=print) -> Path:
+          label: str | None = None, say=print, sleep=time.sleep) -> Path:
     """Download `url` to `dest`. A `.part` file left by an interrupted run is continued with an HTTP Range request
-    (a server that ignores Range and sends 200 restarts the file). A finished file whose SHA256 is wrong is deleted
+    (a server that ignores Range and sends 200 restarts the file). A transient HTTP 429 / 5xx or network error
+    from `opener` is retried (4 tries, `sleep` backoff; #2051); 404 / 403 raise at once. A finished file whose SHA256 is wrong is deleted
     and downloaded once more; a second mismatch raises ValueError. `opener(url, start)` returns a (status-aware)
     response: `.status`, `.read(n)`, context manager. `label` (#1358): print `download <label>: N% (a/b MB)` every 5%
     so the GUI can show progress (`say` is the printer)."""
@@ -37,13 +48,23 @@ def fetch(url: str, dest: Path, sha256: str, opener=_open_range, on_bytes=None, 
             part.replace(dest)
             return dest
         start = part.stat().st_size if part.exists() else 0
-        try:
-            r = opener(url, start)
-        except urllib.error.HTTPError as e:
-            if e.code == 416 and start:  # .part is bigger than / not a prefix of the file: start over
-                part.unlink()
-                continue
-            raise
+        r = None
+        for attempt in range(1, _OPEN_ATTEMPTS + 1):
+            try:
+                r = opener(url, start)
+                break
+            except urllib.error.HTTPError as e:
+                if e.code == 416 and start:  # .part is bigger than / not a prefix of the file: start over
+                    part.unlink()
+                    break
+                if not _transient(e) or attempt == _OPEN_ATTEMPTS:
+                    raise
+            except (urllib.error.URLError, ConnectionError, TimeoutError):
+                if attempt == _OPEN_ATTEMPTS:
+                    raise
+            sleep(2 ** attempt)  # 2, 4, 8 s; the .part prefix is kept
+        if r is None:  # 416 restart
+            continue
         with r:
             if start and getattr(r, "status", 200) != 206:
                 start = 0  # server ignored Range: start over
