@@ -93,6 +93,11 @@ class Pipeline extends ChangeNotifier {
   String draftRu = '';
   final DraftTracker _draft = DraftTracker();
   Timer? _draftExpiry;
+
+  /// The draft recognizer is loaded (drafts can appear) / failed to load (#2030). It is loaded
+  /// anew each time 顯示原文草稿 is switched on, which takes a few seconds.
+  bool draftRecognizerReady = false;
+  bool draftRecognizerFailed = false;
   FeaturePrefs prefs = const FeaturePrefs();
   FeaturePrefsStore? _prefsStore;
 
@@ -502,6 +507,11 @@ class Pipeline extends ChangeNotifier {
               _refreshDraft();
               _maybeTranslateDraft(seg, text, e.lang);
             }
+          case AsrDraftState(:final ready, :final failed):
+            draftRecognizerReady = ready;
+            draftRecognizerFailed = failed;
+            if (failed) _log.e('asr: draft recognizer failed to load');
+            if (!_disposed) notifyListeners();
           case AsrBench():
             if (!(_benchWait?.isCompleted ?? true)) _benchWait!.complete(e);
           case AsrSegmentEnd(:final seg):
@@ -807,6 +817,9 @@ class Pipeline extends ChangeNotifier {
     prefs = prefs.copyWith(sourceDraft: on);
     _prefsStore?.save(prefs);
     _asr?.setDraft(on);
+    // Not ready until the worker reports the (re)loaded recognizer (AsrDraftState).
+    draftRecognizerReady = false;
+    draftRecognizerFailed = false;
     if (!on) _draft.reset();
     _refreshDraft();
   }

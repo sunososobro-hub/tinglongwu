@@ -48,3 +48,22 @@ def test_cpu_failure_is_not_swallowed(monkeypatch, tmp_path):
     monkeypatch.setattr(asr, "resolve_device", lambda choice: "cpu")
     with pytest.raises(RuntimeError):
         asr.FasterWhisperRecognizer(tmp_path, size="small", device="cpu")
+
+
+def test_cuda_value_error_falls_back_to_cpu(monkeypatch, tmp_path):  # #2039
+    calls = []
+
+    class FakeModel:
+        def __init__(self, path, device="cpu", compute_type="int8", **kw):
+            calls.append(device)
+            if device == "cuda":
+                raise ValueError("Requested int8_float16 compute type, but the target device does not support it")
+
+    mod = types.ModuleType("faster_whisper")
+    mod.WhisperModel = FakeModel
+    monkeypatch.setitem(sys.modules, "faster_whisper", mod)
+    monkeypatch.setattr(asr, "require", lambda p, *a, **k: p)
+    monkeypatch.setattr(asr, "resolve_device", lambda choice: "cuda")
+    monkeypatch.setattr(asr, "asr_compute_type", lambda dev, *a, **k: "int8_float16" if dev == "cuda" else "int8")
+    rec = asr.FasterWhisperRecognizer(tmp_path, size="small", device="cuda")
+    assert rec.device == "cpu" and calls == ["cuda", "cpu"]

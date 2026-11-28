@@ -12,6 +12,9 @@
 // margin) after the per-round checks; the margin comes from 11 baseline runs (rules section 20, see below).
 // Uses Pipeline.debugFeedMic (as two_way_test.dart) rather than the emulator microphone: each round needs a
 // clean start and end of speech, and the host loop of mic_test.dart repeats the clip without a gap.
+// #2030: switching the draft on loads its recognizer anew (a few seconds, more on a busy emulator: run
+// 45920581961 lost the draft of the last "on" round to it), so each "on" round waits for
+// Pipeline.draftRecognizerReady before it speaks, as a user who switches it on in the settings and then talks.
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -43,12 +46,14 @@ class DraftRound {
   String draftAfter = ''; // Pipeline.draftRu once the round is over
   String finalText = '';
   int? latencyMs;
+  int? loadMs; // switch-on until the draft recognizer reported ready ("on" rounds)
+  bool loaded = true; // false: it failed or did not load within the limit
   bool done = false;
 
   @override
   String toString() => 'draft=${draftOn ? 'on' : 'off'} firstDraft=${firstDraftMs ?? '-'} '
       'firstFinal=${firstFinalMs ?? '-'} atFinal="${draftAtFinal ?? '-'}" after="$draftAfter" '
-      'lat=${latencyMs ?? '-'} final="$finalText"';
+      'lat=${latencyMs ?? '-'} load=${loadMs ?? '-'}${loaded ? '' : '(not loaded)'} final="$finalText"';
 }
 
 /// Median of [v] (mean of the middle two for an even count); null when empty.
@@ -63,6 +68,12 @@ Future<DraftRound> runRound(Pipeline p, Uint8List pcm, {required bool draftOn}) 
   p.setSourceDraft(draftOn);
   expect(p.prefs.sourceDraft, draftOn);
   final r = DraftRound(draftOn);
+  if (draftOn) {
+    final lw = Stopwatch()..start();
+    await waitFor(() => p.draftRecognizerReady || p.draftRecognizerFailed, const Duration(minutes: 2));
+    r.loadMs = lw.elapsedMilliseconds;
+    r.loaded = p.draftRecognizerReady;
+  }
   final old = p.subtitles.toSet();
   Iterable<Subtitle> fresh() => p.subtitles.where((s) => !old.contains(s));
   final sw = Stopwatch()..start();
@@ -157,6 +168,7 @@ void main() {
       expect(r.latencyMs, isNotNull, reason: '$r');
     }
     for (final r in on) {
+      expect(r.loaded, isTrue, reason: 'draft recognizer did not load (failed or > 2 min): $r');
       // (a) a draft appears before the final source text.
       expect(r.firstDraftMs, isNotNull, reason: 'no draft text with 顯示原文草稿 on: $r');
       expect(r.firstDraftMs!, lessThan(r.firstFinalMs!), reason: 'draft did not come before the final: $r');

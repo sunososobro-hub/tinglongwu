@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from _pwsh import run_pwsh
 from tinglongwu import cli, device
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -154,10 +155,8 @@ def test_windows_menu_drafts_question(tmp_path, ui, dflt, answer, want):
               "$s = @(Get-TlwuStreamArgs fakepy)\n"
               "Write-Host ('COUNT=' + $s.Count)\n"
               "Write-Host ('ARGS=' + ($s -join ' '))\n")
-    env = {**os.environ, "POWERSHELL_TELEMETRY_OPTOUT": "1", "POWERSHELL_UPDATECHECK": "Off",
-           "TLWU_UI_LANG": ui, "TLWU_CONFIG_DIR": str(tmp_path)}
-    r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True,
-                       text=True, encoding="utf-8", timeout=120, env=env, cwd=str(ROOT))
+    env = {**os.environ, "TLWU_UI_LANG": ui, "TLWU_CONFIG_DIR": str(tmp_path)}
+    r = run_pwsh(["-Command", script], pwsh=PWSH, text=True, encoding="utf-8", env=env, cwd=str(ROOT))
     assert r.returncode == 0, r.stderr
     lines = r.stdout.splitlines()
     assert f"ARGS={want}" in lines and f"COUNT={1 if want else 0}" in lines

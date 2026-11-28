@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from _pwsh import run_pwsh
+
 ROOT = Path(__file__).resolve().parents[1]
 pytestmark = pytest.mark.skipif(sys.platform == "win32" or not shutil.which("bash"), reason="needs bash")
 
@@ -85,8 +87,8 @@ def _run_ps1(tmp_path: Path, version: tuple[int, int]):
     env = {k: v for k, v in os.environ.items() if k not in ("TLWU_SKIP_MODELS", "TLWU_SKIP_SHORTCUT")}
     env.update(PATH=f"{fake}{os.pathsep}/usr/bin{os.pathsep}/bin", TLWU_SKIP_SHORTCUT="1", TLWU_TEST_RAM_MB="2048",
                POWERSHELL_TELEMETRY_OPTOUT="1", POWERSHELL_UPDATECHECK="Off")
-    r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-File", str(ROOT / "scripts" / "install.ps1"), "-DryRun"],
-                       capture_output=True, text=True, encoding="utf-8", timeout=180, env=env, cwd=str(tmp_path))
+    r = run_pwsh(["-File", str(ROOT / "scripts" / "install.ps1"), "-DryRun"], pwsh=PWSH,
+                 text=True, encoding="utf-8", timeout=180, env=env, cwd=str(tmp_path))
     return r, r.stdout + r.stderr
 
 

@@ -132,6 +132,107 @@ def test_issues_in_range_skips_subject_numbers_that_are_not_prs(tmp_path, monkey
     assert sn.issues_in_range("r", "v0.1.0", "t", None) == [1]
     _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "server error (#3)")
     _git(tmp_path, "tag", "v0.2.0")
+    assert sn.issues_in_range("r", "v0.2.0", "t", "v0.1.0") == []  # 5xx is skipped since #2048
+
+
+def test_issues_in_range_skips_410_and_422_and_keeps_later_prs(tmp_path, monkeypatch, capsys):
+    """#2037: HTTP 422 on /pulls/N aborted the daily run; 404/410/422 skip one line, 401/403 still raise."""
+    import io
+    import urllib.error
     import pytest
-    with pytest.raises(urllib.error.HTTPError):  # other errors still fail loudly
-        sn.issues_in_range("r", "v0.2.0", "t", "v0.1.0")
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "gone (#10)")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "unprocessable (#11)")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "real pr (#12)")
+    _git(tmp_path, "tag", "v0.1.0")
+    monkeypatch.chdir(tmp_path)
+    codes = {"10": 410, "11": 422}
+
+    def fake_api(path, token, *a, **k):
+        n = path.rsplit("/", 1)[1]
+        if n in codes:
+            raise urllib.error.HTTPError(path, codes[n], "x", {}, io.BytesIO(b""))
+        return {"body": "Closes #" + n}
+
+    monkeypatch.setattr(sn, "_api", fake_api)
+    assert sn.issues_in_range("r", "v0.1.0", "t", None) == [12]
+    out = capsys.readouterr().out
+    assert "#10 skipped (HTTP 410" in out and "#11 skipped (HTTP 422" in out
+    for bad in (401, 403):
+        codes["11"] = bad
+        with pytest.raises(urllib.error.HTTPError):
+            sn.issues_in_range("r", "v0.1.0", "t", None)
+
+
+def _http_error(code):
+    import io
+    import urllib.error
+    return urllib.error.HTTPError("u", code, "x", {}, io.BytesIO(b""))
+
+
+class _Resp:
+    def __init__(self, body):
+        self._b = body
+
+    def read(self):
+        return self._b
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_api_retries_get_once_after_5xx(monkeypatch):
+    """#2048: urlopen returns 500 once, then a PR body: the GET succeeds."""
+    calls = []
+
+    def fake_urlopen(req, timeout=0):
+        calls.append(1)
+        if len(calls) == 1:
+            raise _http_error(500)
+        return _Resp(b'{"body": "Closes #7"}')
+
+    monkeypatch.setattr(sn.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(sn.time, "sleep", lambda s: None)
+    assert sn._api("/repos/r/pulls/1", "t") == {"body": "Closes #7"}
+    assert len(calls) == 2
+
+
+def test_api_does_not_retry_4xx_or_post(monkeypatch):
+    import pytest
+    calls = []
+
+    def fake_urlopen(req, timeout=0):
+        calls.append(1)
+        raise _http_error(404 if len(calls) == 1 else 500)
+
+    monkeypatch.setattr(sn.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(sn.time, "sleep", lambda s: None)
+    with pytest.raises(sn.urllib.error.HTTPError):
+        sn._api("/x", "t")
+    assert len(calls) == 1
+    with pytest.raises(sn.urllib.error.HTTPError):
+        sn._api("/x", "t", "POST", {"a": 1})
+    assert len(calls) == 2
+
+
+def test_issues_in_range_continues_after_5xx_twice(tmp_path, monkeypatch, capsys):
+    """#2048: 500 on both tries for one PR lookup skips that commit, the other commits still count."""
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "first (#20)")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "flaky (#21)")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "last (#22)")
+    _git(tmp_path, "tag", "v0.1.0")
+    monkeypatch.chdir(tmp_path)
+
+    def fake_urlopen(req, timeout=0):
+        if req.full_url.endswith("/pulls/21"):
+            raise _http_error(500)
+        return _Resp(('{"body": "Closes #%s"}' % req.full_url.rsplit("/", 1)[1]).encode())
+
+    monkeypatch.setattr(sn.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(sn.time, "sleep", lambda s: None)
+    assert sn.issues_in_range("r", "v0.1.0", "t", None) == [22, 20]
+    assert "'flaky (#21)': #21 skipped (HTTP 500" in capsys.readouterr().out

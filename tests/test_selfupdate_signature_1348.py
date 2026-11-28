@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _pwsh import run_pwsh
 
 from tinglongwu_setup import ed25519, selfupdate as su
 
@@ -179,7 +180,7 @@ def test_helper_refuses_file_changed_after_check(tmp_path):
     exe.write_bytes(b"changed")
     script = tmp_path / "s.ps1"
     script.write_text(su.apply_script(exe, tmp_path, 0, hashlib.sha256(EXE).hexdigest()), "utf-8-sig")
-    r = subprocess.run(["pwsh", "-NoProfile", "-File", str(script)], capture_output=True, text=True, timeout=120)
+    r = run_pwsh(["-File", str(script)], text=True, timeout=120)
     assert r.returncode == 0  # the helper swallowed the refusal; the installer never ran
 
 

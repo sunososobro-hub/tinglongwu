@@ -18,6 +18,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, UTC
 
 REPO = "sunososobro-hub/tinglongwu"
@@ -152,7 +153,17 @@ def render(rows: list[dict], infra: str, total: int, untyped: int, mix_ok: bool,
 
 
 def _gh(path: str, *args: str) -> object:
-    out = subprocess.run(["gh", "api", path, *args], check=True, capture_output=True, text=True).stdout
+    """`gh api`, retried once after a failure (#2047); a second failure prints the command and gh's stderr, then raises."""
+    cmd = ["gh", "api", path, *args]
+    for attempt in (1, 2):
+        try:
+            out = subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+            break
+        except subprocess.CalledProcessError as e:
+            if attempt == 2:
+                print(f"gh failed twice: {' '.join(cmd)}\n{e.stderr or ''}", file=sys.stderr)
+                raise
+            time.sleep(2)
     return json.loads(out) if out.strip() else None
 
 
@@ -423,7 +434,10 @@ def collect_models(now: datetime) -> list[dict]:
         comments = [c.get("body") or "" for c in _gh_list(f"repos/{REPO}/issues/{n}/comments?per_page=100")]
         conclusions: dict[str, list[str]] = {}
         for c in _gh_list(f"repos/{REPO}/pulls/{n}/commits?per_page=100"):
-            runs = _gh(f"repos/{REPO}/commits/{c['sha']}/check-runs?check_name=test&per_page=100") or {}
+            try:
+                runs = _gh(f"repos/{REPO}/commits/{c['sha']}/check-runs?check_name=test&per_page=100") or {}
+            except subprocess.CalledProcessError:  # #2047: skip this commit (no conclusions), keep the run alive
+                runs = {}
             conclusions[c["sha"]] = [r.get("conclusion") for r in runs.get("check_runs", [])]
         later = [{"number": o["number"], "title": o.get("title"), "body": o.get("body")}
                  for o in prs if o.get("merged_at") and _ts(o["merged_at"]) > merged]

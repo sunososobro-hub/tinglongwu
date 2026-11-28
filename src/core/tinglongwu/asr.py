@@ -198,7 +198,7 @@ class FasterWhisperRecognizer(Recognizer):
         try:
             self.model = WhisperModel(str(path), device=self.device,
                                       compute_type=asr_compute_type(self.device), **threads)
-        except RuntimeError as e:  # e.g. CUDA out of memory / driver problem at load time
+        except (RuntimeError, ValueError) as e:  # CUDA OOM / driver problem; ValueError = unsupported compute type (#2039)
             if self.device != "cuda":
                 raise
             print(f"tlwu: GPU load failed ({e}); falling back to CPU.", file=sys.stderr)

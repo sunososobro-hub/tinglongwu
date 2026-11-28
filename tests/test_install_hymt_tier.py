@@ -7,11 +7,11 @@ from __future__ import annotations
 import os
 import shutil
 import stat
-import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from _pwsh import run_pwsh
 
 from tinglongwu import hwprobe
 
@@ -37,8 +37,8 @@ def dry_run(tmp_path: Path, total_mb: int | None, *extra: str) -> str:
     env["TLWU_TEST_RAM_MB"] = "2048"  # low RAM: Hy-MT2 is still installed, with a warning (#301)
     env.update(PATH=f"{bin_dir}{os.pathsep}/usr/bin{os.pathsep}/bin", TLWU_SKIP_SHORTCUT="1",
                POWERSHELL_TELEMETRY_OPTOUT="1", POWERSHELL_UPDATECHECK="Off")
-    r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-File", str(ROOT / "scripts" / "install.ps1"), "-DryRun", *extra],
-                       capture_output=True, text=True, encoding="utf-8", timeout=180, env=env, cwd=str(tmp_path))
+    r = run_pwsh(["-File", str(ROOT / "scripts" / "install.ps1"), "-DryRun", *extra], pwsh=PWSH,
+                 text=True, encoding="utf-8", timeout=180, env=env, cwd=str(tmp_path), expect_output=True)
     assert r.returncode == 0, r.stdout + r.stderr
     return r.stdout
 
