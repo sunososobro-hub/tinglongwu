@@ -103,6 +103,20 @@ class BaseModelDownload extends ChangeNotifier {
   Future<bool> autoStart(NetworkProbe probe) async {
     if (_autoTried || busy || state == BaseDlState.done) return false;
     _autoTried = true;
+    final k = await _probe(probe);
+    if (k != NetKind.unmetered) return false;
+    return run(unmeteredOnly: true);
+  }
+
+  /// Only look at the network (#1998): sets [net] so the screen can name the mobile-data cost, but
+  /// never starts a download. For the first-use screen with optional packs, where the person taps.
+  Future<void> probeNetwork(NetworkProbe probe) async {
+    if (_autoTried || busy || state == BaseDlState.done) return;
+    _autoTried = true;
+    await _probe(probe);
+  }
+
+  Future<NetKind> _probe(NetworkProbe probe) async {
     NetKind k;
     try {
       k = await probe.kind();
@@ -111,8 +125,7 @@ class BaseModelDownload extends ChangeNotifier {
     }
     net = k;
     notifyListeners();
-    if (k != NetKind.unmetered) return false;
-    return run(unmeteredOnly: true);
+    return k;
   }
 
   /// "123 / 1310 MB", empty while the total is not known.
@@ -158,6 +171,9 @@ class BaseModelDownload extends ChangeNotifier {
         if (pr.cancelled) return _fail('下載已停止。');
         if (pr.problems.isNotEmpty) {
           return _fail('檔案檢查不符，沒有安裝：\n${pr.problems.join('\n')}');
+        }
+        if (!await src.packInstalled(p)) {
+          return _fail('辨識包安裝後仍不完整，請重試：${p.name}');
         }
         offset += p.size;
         done = offset;
@@ -244,9 +260,9 @@ class DeviceBaseModelSource implements BaseModelSource {
 
   @override
   Future<bool> packInstalled(VoicePack p) async {
-    final importer = ModelImporter(await ModelImporter.loadManifest(), modelsDir);
-    final present = importer.presentFiles(packDirs: await ModelPaths.packLocations());
-    return p.files.every((f) => present.contains(f.path));
+    // Ask ModelPaths, the code that picks the file the app reads, so the answers agree (#1980).
+    final paths = await ModelPaths.resolve();
+    return p.files.every((f) => paths.hasGoodCopy(f.path));
   }
 
   @override

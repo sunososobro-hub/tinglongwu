@@ -23,8 +23,12 @@ class AsrPackPaths {
     required this.decoder,
     required this.joiner,
     required this.tokens,
+    this.modelType = 'transducer',
   });
   final String lang, encoder, decoder, joiner, tokens;
+
+  /// sherpa-onnx `modelType`: `transducer` (zipformer packs) or `nemo_transducer` (GigaAM v3, #1834).
+  final String modelType;
 
   /// Null when any file is missing (no partial recognizer).
   static AsrPackPaths? find(

@@ -12,7 +12,7 @@ Usage:
 
 Lag at T s = T minus the audio position (end of speech) of the newest translated line on screen at T, averaged over
 the 20 s before T (lines come once per segment, so one instant swings by a segment). Lines written untranslated to
-catch up (`mt_skipped`) do not count as translated. Pass: lag at 60 s <= 8 s, lag at 180 s no more than 3 s above
+catch up (`mt_skipped`) do not count as translated. Pass: lag at 60 s <= 9.5 s, lag at 180 s no more than 4 s above
 lag at 60 s, and no shown line is a music sound tag ("Music.", "[MUSIC PLAYING]"). Exit 0 pass, 1 fail, 2 error.
 """
 from __future__ import annotations
@@ -28,9 +28,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-LAG_AT_60_MAX = 8.0  # #1369 Acceptance
-GROWTH_MAX = 3.0  # lag(180) - lag(60). #1369: was 2.0, never calibrated; the fixed build measured 7.31 -> 9.45 s
-# (growth 2.14 s) on two runs (44431043878, 44436697731); the field-test bug grew ~25 s, so 3 s still catches it
+# #2008 / rules section 20: limits = baseline p95 + margin. Baseline: 15 low-end-cpu runs on dev PRs, 2026-11-24 to
+# 11-26 (run links in the #2008 PR): lag at 60 s min 7.31 / max 8.37 / p95 8.37 s; growth lag(180) - lag(60) max 3.27
+# / p95 2.74 s. The old 8.0 s (#1369 Acceptance) sat below the baseline max, so noise failed non-ASR PRs (8.05, 8.07).
+LAG_AT_60_MAX = 9.5  # p95 8.37 + 1.13 s margin
+GROWTH_MAX = 4.0  # p95 2.74 + 1.26 s margin; the field-test bug (#1369) grew ~25 s, so 4 s still catches it
 WINDOW_S = 20
 CLIP_S = 180.0
 MUSIC_AT_S, MUSIC_S = 90.0, 8.0
@@ -81,9 +83,9 @@ def score(records: list[dict], clip_s: float = CLIP_S) -> dict:
         fails.append("no translated line by the checkpoint")
     else:
         if l60 > LAG_AT_60_MAX:
-            fails.append(f"lag at 60 s {l60:.1f} s > {LAG_AT_60_MAX:.0f} s")
+            fails.append(f"lag at 60 s {l60:.1f} s > {LAG_AT_60_MAX:g} s")
         if lend - l60 > GROWTH_MAX:
-            fails.append(f"lag grew {lend - l60:.1f} s from 60 s to {clip_s:.0f} s (> {GROWTH_MAX:.0f} s)")
+            fails.append(f"lag grew {lend - l60:.1f} s from 60 s to {clip_s:.0f} s (> {GROWTH_MAX:g} s)")
     if music:
         fails.append(f"{len(music)} music-only line(s) shown")
     r = lambda v: None if v is None else round(v, 2)  # noqa: E731

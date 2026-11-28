@@ -4,6 +4,12 @@ name: mobile-emulator
 # rolling pre-release mobile-latest (the files a user imports), replays a Mandarin clip as microphone audio and
 # asserts the English TTS produced PCM samples plus a `TTS [en] speakLat=` log line. speakLat is report-only
 # (job summary): rules section 20, no timing limit without 10 baseline runs. Not release-critical, not required.
+# #1728: mobile/integration_test/mic_test.dart then records the emulator's real microphone while the host loops
+# the same zh clip into a PulseAudio null sink (mobile/tool/host_mic.sh; -allow-host-audio), and once more with
+# the clip stopped; both RMS values go to the job summary. The emulator runs windowed on Xvfb (not -no-window):
+# the headless qemu build never opened PulseAudio (run 45872152175).
+# #1729: mobile/integration_test/draft_test.dart replays the zh clip with 顯示原文草稿 off / on and asserts the grey
+# draft comes before the final line and is replaced by it; the on / off latency medians go to the job summary.
 # The emulator is started with the SDK's own sdkmanager / avdmanager / emulator (no third-party action).
 on:
   pull_request:
@@ -24,7 +30,10 @@ env:
   CMAKE_VERSION: "3.22.1"
   LLAMA_COMMIT: afeebe103bd99cda8f5dfaefcabadf890db7fda7
   SYS_IMAGE: "system-images;android-34;google_apis;x86_64"
-  PKG: com.tinglongwu.mobile
+  # The debug APK's id: build.gradle.kts debug applicationIdSuffix ".dev" (#1600). Run 45795806871 pushed the
+  # inputs under the release id and the test found no zip. The Kotlin namespace (activity class) has no suffix.
+  PKG: com.tinglongwu.mobile.dev
+  ACTIVITY: com.tinglongwu.mobile.MainActivity
   # SenseVoice release tarball (sha as in mobile/tool/fetch_models.sh); only its test_wavs/zh.wav is used.
   SV_URL: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2
   SV_SHA: 7d1efa2138a65b0b488df37f8b89e3d91a60676e416f515b952358d83dfd347e
@@ -105,13 +114,51 @@ jobs:
           tar xjf "$RUNNER_TEMP/sv.tar.bz2" -C "$RUNNER_TEMP" --wildcards '*/test_wavs/zh.wav'
           ffmpeg -loglevel error -y -i "$RUNNER_TEMP"/sherpa-onnx-sense-voice-*/test_wavs/zh.wav -ar 16000 -ac 1 -c:a pcm_s16le "$IN/zh.wav"
           ls -l "$IN"
+      - name: Host audio (PulseAudio null sink as the default source, #1728)
+        run: |
+          set -euo pipefail
+          ok=0
+          for i in 1 2 3; do
+            sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends pulseaudio pulseaudio-utils && { ok=1; break; }
+            echo "apt try $i failed"; sleep 15
+          done
+          [ "$ok" = 1 ]
+          export TLWU_PULSE_DIR="$RUNNER_TEMP/pulse"
+          bash tool/host_mic.sh setup
+          # Runs 45861986791 / 45865539644: the emulator still logged "Could not init `pa' audio driver" with
+          # libpulse defaults, so the server is also named the way QEMU's pa backend reads it (QEMU_PA_*).
+          SRV=$(pactl info | sed -n 's/^Server String: //p')
+          { echo "TLWU_PULSE_DIR=$TLWU_PULSE_DIR"; echo "QEMU_AUDIO_DRV=pa"; echo "QEMU_PA_SERVER=$SRV"
+            echo "QEMU_PA_SOURCE=tlwu_clip.monitor"; echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+            # Diagnosis only (run 45869566186 still "Failed to initialize PA context"): libpulse client debug log
+            # in emulator.log, server side in pulse.log, both in the summary / failure log.
+            echo "PULSE_LOG=4"; } >> "$GITHUB_ENV"
       - name: Start the emulator
         run: |
           set -euo pipefail
+          # Run 45787449295: avdmanager put the AVD outside ~/.android/avd (runner image default), so the
+          # config.ini append failed. Pin one AVD home for avdmanager and the emulator (both honour it).
+          export ANDROID_AVD_HOME="$HOME/.android/avd"; mkdir -p "$ANDROID_AVD_HOME"
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n e2e -k "$SYS_IMAGE" -d pixel_6 --force
-          printf 'hw.ramSize=6144\nhw.cpu.ncore=4\ndisk.dataPartition.size=12G\n' >> ~/.android/avd/e2e.avd/config.ini
-          nohup "$ANDROID_HOME/emulator/emulator" -avd e2e -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect \
-            -camera-back none -camera-front none > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          CFG="$ANDROID_AVD_HOME/e2e.avd/config.ini"
+          if [ ! -f "$CFG" ]; then
+            echo "::error::avdmanager did not create $CFG"; find "$HOME" -name 'e2e.avd' -maxdepth 4 2>/dev/null || true; exit 1
+          fi
+          printf 'hw.ramSize=6144\nhw.cpu.ncore=4\ndisk.dataPartition.size=12G\nhw.audioInput=yes\n' >> "$CFG"
+          # #1728 round 2: with -no-window the emulator runs qemu-system-x86_64-headless, and run 45872152175 showed
+          # its pa backend failing "Failed to initialize PA context" without ever reaching the PulseAudio server
+          # (pulse.log saw only pactl / paplay). So the windowed qemu build runs instead, on an Xvfb display.
+          # Which qemu binaries link libpulse goes to qemu-audio.txt (job summary) for the next round.
+          EMU="$ANDROID_HOME/emulator"
+          { for q in "$EMU"/qemu/linux-x86_64/qemu-system-x86_64*; do
+              [ -e "$q" ] || continue
+              echo "$(basename "$q"): $(ldd "$q" 2>/dev/null | grep -io 'libpulse[^ ]* => [^ ]*' | tr '\n' ' ')"
+            done
+            echo "emulator lib64 pulse libs: $(ls "$EMU"/lib64 2>/dev/null | grep -i pulse | tr '\n' ' ')"
+          } > "$RUNNER_TEMP/qemu-audio.txt" 2>&1 || true
+          command -v xvfb-run > /dev/null || { sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends xvfb; }
+          nohup xvfb-run -a -s "-screen 0 1280x1024x24" "$EMU/emulator" -avd e2e -no-snapshot -no-boot-anim -gpu swiftshader_indirect \
+            -camera-back none -camera-front none -allow-host-audio -debug audio > "$RUNNER_TEMP/emulator.log" 2>&1 &
           ADB="$ANDROID_HOME/platform-tools/adb"
           timeout 600 "$ADB" wait-for-device
           timeout 600 bash -c "until [ \"\$('$ADB' shell getprop sys.boot_completed | tr -d '\r')\" = 1 ]; do sleep 5; done"
@@ -120,12 +167,19 @@ jobs:
           "$ADB" shell settings put global animator_duration_scale 0
           echo "booted"
       - name: Install the app and push the test inputs into its files dir
+        id: install
         run: |
           set -euo pipefail
           ADB="$ANDROID_HOME/platform-tools/adb"
           "$ADB" install -r -t build/app/outputs/flutter-apk/app-debug.apk
+          # The inputs go under the installed package's dir, so stop here if PKG is not what the APK installed.
+          if ! "$ADB" shell pm path "$PKG" | grep -q '^package:'; then
+            echo "::error::$PKG is not installed; installed tinglongwu ids:"; "$ADB" shell pm list packages | grep -i tinglongwu || true; exit 1
+          fi
           # One launch so the app itself creates its external files dir (then the pushed files are the app's).
-          "$ADB" shell am start -W -n "$PKG/.MainActivity"
+          # `am start` exits 0 on "Error type 3" (no such activity), so check its output.
+          OUT=$("$ADB" shell am start -W -n "$PKG/$ACTIVITY" 2>&1); echo "$OUT"
+          if echo "$OUT" | grep -q '^Error'; then echo "::error::could not launch $PKG/$ACTIVITY"; exit 1; fi
           sleep 20
           "$ADB" shell am force-stop "$PKG"
           D="/sdcard/Android/data/$PKG/files/e2e"
@@ -138,6 +192,50 @@ jobs:
         run: |
           set -o pipefail
           flutter test integration_test/two_way_test.dart -d emulator-5554 2>&1 | tee "$RUNNER_TEMP/test.log"
+      - name: Integration test (host clip as the emulator microphone, #1728)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          TLWU_X86_64: "1"
+        run: |
+          set -o pipefail
+          export ADB="$ANDROID_HOME/platform-tools/adb" E2E_DIR="/sdcard/Android/data/$PKG/files/e2e"
+          LOG="$RUNNER_TEMP/mic.log"; : > "$LOG"
+          bash tool/host_mic.sh serve "$RUNNER_TEMP/e2e/zh.wav" &
+          SERVE=$!
+          # `|| rc=$?`: under `bash -e` a failed test would end the step before the host loop is stopped.
+          rc=0
+          flutter test integration_test/mic_test.dart -d emulator-5554 2>&1 | tee "$LOG" || rc=$?
+          kill "$SERVE" 2> /dev/null || true
+          bash tool/host_mic.sh stop
+          exit $rc
+      - name: Integration test (grey source draft on / off, #1729)
+        # After the mic step, so the host clip loop is stopped. The on/off latency medians are asserted with
+        # kDraftLatencyMarginMs in draft_test.dart (limit from 11 baseline runs, rules section 20).
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          TLWU_X86_64: "1"
+        run: |
+          set -euo pipefail
+          # Runs 45906708811 / 45908554390: inputs pushed before `flutter test` were gone once it had installed the
+          # app. So the test asks for them: it writes e2e/draft_ready, this loop pushes the inputs and writes draft_go.
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          D="/sdcard/Android/data/$PKG/files/e2e"
+          (
+            for _ in $(seq 1 1200); do
+              if "$ADB" shell ls "$D/draft_ready" > /dev/null 2>&1; then
+                "$ADB" shell rm -f "$D/draft_ready"
+                "$ADB" push "$RUNNER_TEMP"/e2e/* "$D/" && "$ADB" shell touch "$D/draft_go"
+                exit 0
+              fi
+              sleep 1
+            done
+            echo "::warning::draft_test never wrote $D/draft_ready"
+          ) &
+          FEED=$!
+          rc=0
+          flutter test integration_test/draft_test.dart -d emulator-5554 2>&1 | tee "$RUNNER_TEMP/draft.log" || rc=$?
+          kill "$FEED" 2> /dev/null || true
+          exit $rc
       - name: Job summary (speakLat, report only)
         if: always()
         run: |
@@ -147,6 +245,15 @@ jobs:
             # `|| true`: an earlier step may have failed before test.log / the app log exist (run 45765117770).
             LAT=$(grep -o 'TLWU_SPEAKLAT=[^ ]*' "$RUNNER_TEMP/test.log" 2>/dev/null | tail -1 | cut -d= -f2 || true)
             echo "- speakLat (end of zh speech -> start of en audio, x86_64 emulator, report only): **${LAT:-n/a} ms**"
+            MIC=$(grep -o 'TLWU_MIC_RMS .*' "$RUNNER_TEMP/mic.log" 2>/dev/null | tail -1 || true)
+            echo "- emulator mic RMS dBFS (#1728; clip = host zh clip playing, silent = control): **${MIC:-n/a}**"
+            DL=$(grep -o 'TLWU_DRAFT_LAT .*' "$RUNNER_TEMP/draft.log" 2>/dev/null | tail -1 | cut -d' ' -f2- || true)
+            echo "- draft (#1729) median final ASR+MT latency, 顯示原文草稿 on vs off (ms, asserted: on <= off + margin): **${DL:-n/a}**"
+            grep -o 'TLWU_DRAFT_ROUND .*' "$RUNNER_TEMP/draft.log" 2>/dev/null | sed 's/^TLWU_DRAFT_ROUND /- draft round: /' || true
+            sed 's/^/- qemu audio: /' "$RUNNER_TEMP/qemu-audio.txt" 2>/dev/null || true
+            sed 's/^/- pulse: /' "${TLWU_PULSE_DIR:-$RUNNER_TEMP/pulse}/source-outputs.txt" 2>/dev/null || true
+            grep -iE 'audio|PA context|pulse|host microphone' "$RUNNER_TEMP/emulator.log" 2>/dev/null \
+              | head -15 | sed 's/^/- emulator: /' || true
             grep -o 'TLWU_SPEAKLAT=.*' "$RUNNER_TEMP/test.log" 2>/dev/null | tail -1 | sed 's/^/- /' || true
             echo; echo '```'
             "$ADB" shell cat "/sdcard/Android/data/$PKG/files/logs/tlwu.log" 2>/dev/null \
@@ -155,4 +262,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Emulator log on failure
         if: failure()
-        run: tail -100 "$RUNNER_TEMP/emulator.log" || true
+        run: |
+          grep -iE 'pulse|audio|PA context|protocol|cookie|connect' "$RUNNER_TEMP/emulator.log" | head -60 || true
+          tail -40 "$RUNNER_TEMP/pulse/pulse.log" || true
+          tail -100 "$RUNNER_TEMP/emulator.log" || true

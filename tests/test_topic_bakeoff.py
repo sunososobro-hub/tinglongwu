@@ -109,6 +109,19 @@ def test_bench_model_with_fake_summarizer():
     assert row["sec_5min_topic"] >= 0.0 and row["busy_cores"] == 1
 
 
+def test_busy_uses_spawn_and_joins_every_process():
+    """#2024: Busy never forks (fork from a multi-threaded process can deadlock); `with` exits with all joined."""
+    import time
+
+    t0 = time.monotonic()
+    with tb.Busy(1) as b:
+        assert b.ctx.get_start_method() == "spawn"
+        assert [p._start_method for p in b.procs] == ["spawn"]
+        assert all(p.is_alive() for p in b.procs)
+    assert time.monotonic() - t0 < 10
+    assert all(not p.is_alive() and p.exitcode is not None for p in b.procs)
+
+
 def test_bench_model_raises_when_the_5min_topic_fails():
     pytest.importorskip("tinglongwu.topics")
     seg = tb.SEGMENTS[:1]

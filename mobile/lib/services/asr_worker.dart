@@ -37,6 +37,15 @@ class AsrDraft extends AsrEvent {
   final String lang;
 }
 
+/// The draft recognizer (#1064, its own isolate) finished loading ([ready]) or could not load
+/// ([failed]); sent again with ready=false when the draft is switched off and it is freed.
+/// It is loaded each time the draft is switched on, so drafts start only after this (#2030).
+class AsrDraftState extends AsrEvent {
+  const AsrDraftState({required this.ready, this.failed = false});
+  final bool ready;
+  final bool failed;
+}
+
 /// Result of [AsrWorker.bench] (#1065): decode time of [audioMs] of synthetic audio, or
 /// [busy] when speech was going on and the test was skipped.
 class AsrBench extends AsrEvent {
@@ -323,7 +332,7 @@ class AsrWorker {
               tokens: r.pack.tokens,
               numThreads: cfg.numThreads,
               provider: 'cpu',
-              modelType: 'transducer',
+              modelType: r.pack.modelType,
               debug: false,
             ),
           ),
@@ -432,9 +441,12 @@ class AsrWorker {
         if (m is SendPort) {
           if (draftOn && !last) {
             draftPort = m;
+            out.send(const AsrDraftState(ready: true));
           } else {
             m.send(null); // switched off (or the worker stopped) while it was loading
           }
+        } else if (draftOn && !last) {
+          out.send(const AsrDraftState(ready: false, failed: true));
         }
         if (last) draftIn.close();
       } else if (m == 'done') {
@@ -442,7 +454,11 @@ class AsrWorker {
       }
     });
     void stopDraft() {
-      draftPort?.send(null);
+      final port = draftPort;
+      if (port != null) {
+        port.send(null);
+        out.send(const AsrDraftState(ready: false));
+      }
       draftPort = null;
       gate.finished();
     }

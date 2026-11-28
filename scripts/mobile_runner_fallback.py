@@ -45,12 +45,25 @@ def dispatch_body(ref: str, event: str, x86: bool, waited_min: int, sha: str = "
                                    "fallback_event": event, "source_sha": sha, "x86_64_debug": bool(x86)}}
 
 
+MAX_POLL_FAILURES = 3
+
+
 def watch(get_jobs, wait_min: float = WAIT_MIN, poll_s: float = POLL_S,
           clock=time.monotonic, sleep=time.sleep) -> tuple[bool, int]:
     """Poll until the build is picked up or wait_min passes. Returns (picked_up, minutes waited)."""
     start = clock()
+    failures = 0
     while True:
-        if picked_up(get_jobs()):
+        try:
+            jobs = get_jobs()
+            failures = 0
+        except GhError:
+            # a transient poll error is retried on the next poll; 3 in a row end the run (#2021)
+            failures += 1
+            if failures >= MAX_POLL_FAILURES:
+                raise
+            jobs = None
+        if jobs is not None and picked_up(jobs):
             return True, int((clock() - start) // 60)
         waited = clock() - start
         if waited >= wait_min * 60:

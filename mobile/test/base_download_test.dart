@@ -9,6 +9,7 @@ import 'package:mobile/logic/first_use_plan.dart';
 import 'package:mobile/logic/model_manifest.dart';
 import 'package:mobile/services/base_download.dart';
 import 'package:mobile/services/model_importer.dart';
+import 'package:mobile/services/model_paths.dart';
 import 'package:mobile/ui/message_screen.dart';
 
 // #1863: a fresh install with no models downloads them in the app instead of a "Models missing"
@@ -62,6 +63,7 @@ class _Fake implements BaseModelSource {
   final packZip = <String, _Got>{}; // pack id -> (size, sha256) of its first file
   final packUrls = <String>[];
   final packsDone = <String>{}; // ids of installed packs
+  final silentlyIncomplete = <String>{}; // pack ids whose zip omits a file but reports no problem
 
   @override
   Future<String> downloadPack(VoicePack p, void Function(int done, int total) onProgress,
@@ -78,7 +80,7 @@ class _Fake implements BaseModelSource {
     final got = packZip[p.id] ?? (p.files.first.size, p.files.first.sha256);
     final e = p.files.first;
     if (got.$1 == e.size && got.$2 == e.sha256) {
-      packsDone.add(p.id);
+      if (!silentlyIncomplete.contains(p.id)) packsDone.add(p.id);
       r.imported.add(e.path);
     } else {
       r.problems.add('${e.path}: sha256 mismatch');
@@ -244,6 +246,29 @@ void main() {
       expect(await d.run(), isTrue);
       expect(f.packUrls, ['https://example.invalid/asr-ru.zip'], reason: 'voice-en is already installed');
     });
+
+    test('a pack zip that omits a declared file fails run() with a zh-TW error (#1980)', () async {
+      final f = _Fake(_good())..silentlyIncomplete.add('asr-ru');
+      final d = BaseModelDownload(f, url: DeviceBaseModelSource.bundleUrl, extraPacks: packs);
+      expect(await d.run(), isFalse);
+      expect(d.state, BaseDlState.failed);
+      expect(d.error, contains('不完整'));
+    });
+  });
+
+  test('hasGoodCopy follows the file ModelPaths.path selects (#1980)', () {
+    final root = Directory.systemTemp.createTempSync('mp1980');
+    addTearDown(() => root.deleteSync(recursive: true));
+    Directory('${root.path}/files/models').createSync(recursive: true);
+    Directory('${root.path}/pack').createSync();
+    File('${root.path}/pack/a.bin').writeAsBytesSync([1, 2, 3, 4, 5]);
+    final mp = ModelPaths('${root.path}/files', packDirs: ['${root.path}/pack'], sizes: {'a.bin': 5});
+    expect(mp.path('a.bin'), '${root.path}/pack/a.bin');
+    expect(mp.hasGoodCopy('a.bin'), isTrue);
+    // A local file always wins in path() (play_packs_test), so a wrong-size one is "not installed".
+    File('${root.path}/files/models/a.bin').writeAsBytesSync([1, 2, 3]);
+    expect(mp.path('a.bin'), '${root.path}/files/models/a.bin');
+    expect(mp.hasGoodCopy('a.bin'), isFalse);
   });
 
   testWidgets('screen: 開始下載 -> progress + 取消 -> main screen; details folded', (t) async {
@@ -359,6 +384,41 @@ void main() {
     expect(f.urls, [DeviceBaseModelSource.bundleUrl]);
     expect(done, 1);
   });
+
+  // #2003: with optional packs the screen never auto-starts, so the hint must not promise a restart download.
+  for (final withPacks in [true, false]) {
+    testWidgets('screen: mobile-data hint ${withPacks ? 'with' : 'without'} optional packs', (t) async {
+      final d = _dl(_Fake(_good()));
+      final packs = withPacks
+          ? [
+              VoicePack.fromJson({
+                'id': 'voice-en',
+                'lang': 'en',
+                'kind': 'vits',
+                'name': 'voice-en.zip',
+                'url': 'https://example.invalid/voice-en.zip',
+                'files': [
+                  {'path': 'tts-en/model.onnx', 'size': 30, 'sha256': 'a' * 64}
+                ],
+              })
+            ]
+          : <VoicePack>[];
+      await t.pumpWidget(MaterialApp(
+          home: MissingModelsScreen(
+              download: d,
+              modelsDir: '/data/models',
+              missingFiles: const [],
+              onImport: () {},
+              onDone: () {},
+              packs: packs,
+              baseBytes: 1000)));
+      expect(await d.autoStart(_Net(NetKind.metered)), isFalse);
+      await t.pump();
+      final hint = t.widget<Text>(find.byKey(const Key('mobileDataHint'))).data!;
+      expect(hint.contains('重開 App 會自動下載'), !withPacks);
+      if (withPacks) expect(hint.contains('用行動數據下載'), isTrue);
+    });
+  }
 
   testWidgets('screen: on Wi-Fi the download is already running, no tap', (t) async {
     final f = _Fake(_good())..hold = Completer<void>();
@@ -492,6 +552,47 @@ void main() {
               onDone: () {})));
       expect(find.text('開始下載'), findsOneWidget);
       expect(find.text('看影片／聽別人說（只要字幕）'), findsNothing);
+    });
+
+    // #1998: the manifest is read asynchronously; until then the button must not start a base-only run.
+    testWidgets('button is disabled while the manifest is loading, enabled after', (t) async {
+      final d = _dl(_Fake(_good()));
+      Widget screen({required bool loading}) => MaterialApp(
+          home: MissingModelsScreen(
+              download: d,
+              modelsDir: '/data/models',
+              missingFiles: const [],
+              packs: loading ? const [] : packs,
+              baseBytes: loading ? 0 : base,
+              manifestLoading: loading,
+              onImport: () {},
+              onDone: () {}));
+      await t.pumpWidget(screen(loading: true));
+      expect(t.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNull);
+      await t.pumpWidget(screen(loading: false));
+      expect(t.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNotNull);
+    });
+
+    testWidgets('packs present + metered probe: label names mobile data, nothing is fetched', (t) async {
+      final (d, f) = await pump(t);
+      await d.probeNetwork(_Net(NetKind.metered));
+      await t.pump();
+      expect(d.onMobileData, isTrue);
+      expect(f.urls, isEmpty, reason: 'probing never starts a download');
+      expect(find.widgetWithText(FilledButton, '用行動數據下載（約 1.30 GB）'), findsOneWidget);
+      expect(find.text('開始下載（1.30 GB）'), findsNothing);
+      expect(find.textContaining('目前是行動數據'), findsOneWidget);
+      expect(find.textContaining('「用行動數據下載」'), findsOneWidget, reason: 'the hint names the button');
+    });
+
+    testWidgets('packs present + unmetered probe: no mobile-data hint', (t) async {
+      final (d, f) = await pump(t);
+      await d.probeNetwork(_Net(NetKind.unmetered));
+      await t.pump();
+      expect(d.onMobileData, isFalse);
+      expect(f.urls, isEmpty, reason: 'probing never starts a download');
+      expect(find.textContaining('目前是行動數據'), findsNothing);
+      expect(find.textContaining('用行動數據下載'), findsNothing);
     });
   });
 }

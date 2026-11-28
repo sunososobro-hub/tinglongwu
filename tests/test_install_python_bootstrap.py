@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _pwsh import run_pwsh
 
 ROOT = Path(__file__).resolve().parents[1]
 PWSH = shutil.which("pwsh")
@@ -14,8 +15,7 @@ PIN_URL = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe"
 
 
 def ps(script: str, cwd: Path) -> subprocess.CompletedProcess:
-    return subprocess.run([PWSH, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
-                          cwd=cwd, capture_output=True, text=True, timeout=120)
+    return run_pwsh(["-NoLogo", "-Command", script], pwsh=PWSH, cwd=cwd, text=True, timeout=120)
 
 
 def call(tmp_path: Path, sha: str, download: str, winget: str = "{ param($a) Write-Host 'WINGET-CALLED' }"):
@@ -82,10 +82,9 @@ def test_install_ps1_dry_run_without_python_plans_the_install_instead_of_exiting
     shutil.copytree(ROOT / "scripts", work / "scripts")   # install.ps1 dot-sources several helpers from here
     empty = tmp_path / "emptybin"
     empty.mkdir()
-    r = subprocess.run([PWSH, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(work / "install.ps1"),
-                        "-DryRun", "-SkipModels", "-SkipShortcut"],
-                       cwd=work, capture_output=True, text=True, timeout=120,
-                       env={"PATH": str(empty), "HOME": str(tmp_path), "TLWU_UI_LANG": "en"})
+    r = run_pwsh(["-NoLogo", "-File", str(work / "install.ps1"), "-DryRun", "-SkipModels", "-SkipShortcut"],
+                 pwsh=PWSH, cwd=work, text=True, timeout=120,
+                 env={"PATH": str(empty), "HOME": str(tmp_path), "TLWU_UI_LANG": "en"})
     assert r.returncode == 0, r.stdout + r.stderr
     assert f"[dry-run] download {PIN_URL}" in r.stdout
     assert "InstallAllUsers=0" in r.stdout and "winget install" in r.stdout
